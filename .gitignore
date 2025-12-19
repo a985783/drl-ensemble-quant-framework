@@ -1,0 +1,99 @@
+# ============================================================
+# Crypto Trading System - Git Ignore Rules
+# 加密货币交易系统 - Git 忽略规则
+# ============================================================
+
+# ===== Alpha Protection | Alpha 保护 =====
+# Real configuration (contains live trading parameters)
+# 真实配置（包含实盘交易参数）
+config.yaml
+.env
+
+# Model weights (trained with live parameters)
+# 模型权重（使用实盘参数训练）
+*.pth
+*.zip
+*.pkl
+checkpoints/
+models/saved/
+
+# ===== Logs & Data | 日志与数据 =====
+*.log
+*.csv
+trade_logs.csv
+simulation.log
+trading.log
+
+# State files | 状态文件
+trading_state.json
+initial_capital.json
+
+# Data files (too large / privacy)
+# 数据文件（过大/隐私）
+**/test_data_*.csv
+**/data_*.csv
+
+# ===== Python | Python 相关 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== Jupyter | Jupyter 相关 =====
+.ipynb_checkpoints/
+*.ipynb
+
+# ===== Virtual Environments | 虚拟环境 =====
+venv/
+env/
+ENV/
+.venv/
+.env.local
+
+# ===== IDE & Editor | IDE 和编辑器 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ===== OS Files | 系统文件 =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===== Results & Outputs | 结果与输出 =====
+results/
+outputs/
+*.png
+*.jpg
+*.jpeg
+
+# ===== Temporary Files | 临时文件 =====
+*.tmp
+*.temp
+*.bak
+*.old

@@ -1,0 +1,125 @@
+# ============================================================
+# Crypto Trading System Configuration Template
+# 加密货币交易系统配置模板
+# ============================================================
+# 
+# This file contains TEXTBOOK DEFAULT VALUES for demonstration.
+# 本文件包含用于演示的"教科书默认值"。
+#
+# For live trading, create a copy named `config.yaml` with your
+# own optimized parameters. The config.yaml file is gitignored.
+# 
+# 对于实盘交易，请创建名为 `config.yaml` 的副本并填入
+# 您自己优化的参数。config.yaml 文件已被 gitignore。
+# ============================================================
+
+# ----------------------------------------------------------
+# Technical Indicators | 技术指标参数
+# ----------------------------------------------------------
+features:
+  # RSI (Relative Strength Index)
+  rsi_period: 14
+  
+  # MACD (Moving Average Convergence Divergence)
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  
+  # Bollinger Bands
+  bb_period: 20
+  bb_std: 2
+  
+  # ATR (Average True Range)
+  atr_period: 14
+  
+  # Simple Moving Averages
+  sma_short: 50
+  sma_long: 200
+  
+  # Rolling Volatility & Volume
+  vol_period: 20
+
+# ----------------------------------------------------------
+# PPO Training Hyperparameters | PPO 训练超参数
+# ----------------------------------------------------------
+training:
+  # Core PPO parameters
+  learning_rate: 0.0003      # Adam optimizer learning rate
+  gamma: 0.99                # Discount factor
+  n_steps: 2048              # Steps per rollout
+  batch_size: 64             # Minibatch size
+  ent_coef: 0.01             # Entropy coefficient
+  clip_range: 0.2            # PPO clip range
+  gae_lambda: 0.95           # GAE lambda
+  
+  # Training schedule
+  total_timesteps: 100000    # Total training steps per model
+  n_models: 20               # Number of ensemble models
+  
+  # Random seeds for ensemble diversity
+  seeds: [42, 123, 456, 789, 1024, 2024, 2025, 3000, 4000, 5000,
+          6000, 7000, 8000, 9000, 10000, 1111, 2222, 3333, 4444, 5555]
+
+# ----------------------------------------------------------
+# Trading Environment Constraints | 交易环境约束
+# ----------------------------------------------------------
+environment:
+  # Hysteresis threshold (τ): Small changes don't trigger trades
+  # 滞回阈值：小于此值的仓位变化不触发交易
+  tau: 0.2
+  
+  # Slew rate limit (δ): Maximum position change per step
+  # 限速：每步最大仓位变化
+  delta_max: 0.1
+  
+  # Cooldown period (N): Minimum steps between direction flips
+  # 冷却期：反向交易的最小间隔步数
+  cooldown_n: 5
+  
+  # Transaction costs (OKX Perpetual estimates)
+  # 交易成本（OKX 永续合约估计值）
+  k_single: 0.001            # Single-side cost (fee + slippage)
+  funding_daily: 0.0003      # Daily funding rate
+
+# ----------------------------------------------------------
+# Risk Management | 风险管理
+# ----------------------------------------------------------
+risk:
+  # Tiered position limits based on drawdown
+  # 基于回撤的分级仓位限制
+  tier1_threshold: 0.05      # 5% drawdown → tier1_cap
+  tier1_cap: 0.8             # 80% max position
+  
+  tier2_threshold: 0.10      # 10% drawdown → tier2_cap  
+  tier2_cap: 0.5             # 50% max position
+  
+  # Hard stop parameters
+  max_drawdown_limit: 0.15   # Maximum drawdown before survival mode
+  freeze_period_steps: 3     # Steps to freeze after hard stop
+
+# ----------------------------------------------------------
+# XGBoost Signal Model | XGBoost 信号模型
+# ----------------------------------------------------------
+signal_model:
+  n_estimators: 100
+  max_depth: 3
+  learning_rate: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  random_state: 42
+
+# ----------------------------------------------------------
+# Live Trading | 实盘交易
+# ----------------------------------------------------------
+live_trading:
+  ticker: "ETH-USD"
+  interval: "1d"
+  
+  # Execution constraints (same as env, can override for live)
+  tau: 0.25
+  delta_max: 0.15
+  cooldown_days: 3
+  
+  # Order execution
+  limit_timeout_seconds: 60
+  slippage_protection: 0.03  # Max slippage before abort
