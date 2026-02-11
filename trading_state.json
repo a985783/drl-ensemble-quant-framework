@@ -25,5 +25,6 @@
         "last_clock_check": null,
         "clock_drift": 0.0
     },
-    "local_position": null
+    "local_position": null,
+    "last_equity": 71.87181541508767
 }

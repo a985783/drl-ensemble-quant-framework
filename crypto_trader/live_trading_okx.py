@@ -1110,7 +1110,13 @@ class OKXTrader:
         
         if diff == 0:
             print("【执行】无需操作")
-            return
+            return {
+                'price': 0,
+                'fee': 0,
+                'slippage': 0.0,
+                'limit': 0,
+                'contracts': 0
+            }
             
         side = 'buy' if diff > 0 else 'sell'
         amount = abs(diff)
@@ -1162,7 +1168,7 @@ class OKXTrader:
                 # 限价单失败，直接用市价单
                 print(f"⚠️ 限价单失败: {limit_err}")
                 print(f"【回退】直接使用市价单执行...")
-                if intent == "risk_on":
+                if side in ["buy", "sell"]:
                     ok, est_slippage = self._risk_on_slippage_ok(side, best_price)
                     if not ok:
                         msg = (

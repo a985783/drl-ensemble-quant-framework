@@ -215,6 +215,13 @@ def save_state(state: TradingState) -> bool:
     except Exception as e:
         print(f"[ERROR] Failed to save state: {e}")
         return False
+    finally:
+        # Clean up temp file if it still exists
+        if 'temp_file' in locals() and temp_file.exists():
+            try:
+                temp_file.unlink()
+            except:
+                pass
 
 
 def is_action_pending(action_id: str, state: TradingState) -> bool:
