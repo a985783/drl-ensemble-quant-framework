@@ -1,0 +1,29 @@
+{
+    "last_flip_timestamp": 0.0,
+    "run_id": null,
+    "safety_state": "normal",
+    "safe_mode_reason": null,
+    "safe_mode_entered_at": null,
+    "pending_actions": {},
+    "order_state": {
+        "current_order_id": null,
+        "state": "idle",
+        "action_id": null,
+        "created_at": null,
+        "target_position": null
+    },
+    "last_reconcile": {
+        "timestamp": null,
+        "is_consistent": true,
+        "exchange_pos": 0.0,
+        "local_pos": 0.0,
+        "summary": "OK"
+    },
+    "health": {
+        "api_fail_count": 0,
+        "last_api_success": null,
+        "last_clock_check": null,
+        "clock_drift": 0.0
+    },
+    "local_position": null
+}

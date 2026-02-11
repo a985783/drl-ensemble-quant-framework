@@ -1,0 +1,14 @@
+{
+  "stable_run_id": null,
+  "stable_model_path": "checkpoints/ensemble",
+  "candidate_run_id": null,
+  "candidate_model_path": null,
+  "rollout_level": 1.0,
+  "rollout_level_index": -1,
+  "rollout_started_at": null,
+  "rollout_trades_count": 2,
+  "total_trades": 2,
+  "filled_trades": 1,
+  "total_slippage": 0.0,
+  "reconcile_errors": 0
+}

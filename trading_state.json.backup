@@ -1,0 +1,99 @@
+{
+    "last_flip_timestamp": 0,
+    "run_id": null,
+    "safety_state": "normal",
+    "safe_mode_reason": null,
+    "safe_mode_entered_at": null,
+    "pending_actions": {
+        "ETH-USDT_10_1766735100_live_54d49f": {
+            "status": "filled",
+            "target_position": 0.10173951089382172,
+            "created_at": 1766735384.31938,
+            "completed_at": 1766735390.355958,
+            "fill_price": 2963.0
+        },
+        "ETH-USDT_13_1766735400_live_8d2b3d": {
+            "status": "filled",
+            "target_position": 0.12816062569618225,
+            "created_at": 1766735526.8931599,
+            "completed_at": 1766735532.808063,
+            "fill_price": 2960.0
+        },
+        "ETH-USDT_53_1766736300_live_dea785": {
+            "status": "filled",
+            "target_position": 0.5305637121200562,
+            "created_at": 1766736304.524205,
+            "completed_at": 1766736310.439384,
+            "fill_price": 2967.561818181818
+        },
+        "ETH-USDT_66_1766736300_live_86841e": {
+            "status": "filled",
+            "target_position": 0.6559239625930786,
+            "created_at": 1766736369.2280269,
+            "completed_at": 1766736375.2273011,
+            "fill_price": 2964.141452380952
+        },
+        "ETH-USDT_42_1766814600_live_d7c558": {
+            "status": "filled",
+            "target_position": 0.42369213700294495,
+            "created_at": 1766814845.306526,
+            "completed_at": 1766814851.213293,
+            "fill_price": 3078.28
+        },
+        "ETH-USDT_31_1766901600_live_3d9fc0": {
+            "status": "filled",
+            "target_position": 0.3091660439968109,
+            "created_at": 1766901827.9526532,
+            "completed_at": 1766901844.727058,
+            "fill_price": 3823.18
+        },
+        "ETH-USDT_43_1766988000_live_466f75": {
+            "status": "filled",
+            "target_position": 0.4330193102359772,
+            "created_at": 1766988111.8232808,
+            "completed_at": 1766988128.5877278,
+            "fill_price": 3148.32
+        },
+        "ETH-USDT_-11_1767367800_live_ad84d5": {
+            "status": "filled",
+            "target_position": -0.10569269955158234,
+            "created_at": 1767367843.844012,
+            "completed_at": 1767367870.083947,
+            "fill_price": 3945.61
+        },
+        "ETH-USDT_-29_1767507600_live_890a96": {
+            "status": "filled",
+            "target_position": -0.2870399993787797,
+            "created_at": 1767507758.326978,
+            "completed_at": 1767507785.976778,
+            "fill_price": 4106.37
+        },
+        "ETH-USDT_-15_1770553500_live_d19c0d": {
+            "status": "pending",
+            "target_position": -0.15,
+            "created_at": 1770553795.522336
+        }
+    },
+    "order_state": {
+        "current_order_id": null,
+        "state": "idle",
+        "action_id": null,
+        "created_at": null,
+        "target_position": -0.15
+    },
+    "last_reconcile": {
+        "timestamp": 1770553828.7450938,
+        "is_consistent": true,
+        "exchange_pos": 0.0,
+        "local_pos": 0.0,
+        "summary": "OK"
+    },
+    "health": {
+        "api_fail_count": 0,
+        "last_api_success": 1770553834.685358,
+        "last_clock_check": 1770553828.6899729,
+        "clock_drift": 0.020971923828125
+    },
+    "local_position": -0.15,
+    "last_equity": 71.87181541508767
+}
