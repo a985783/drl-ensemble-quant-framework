@@ -5,11 +5,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
+ensure_project_root
+require_python
+
 # --- 配置 ---
-PROJECT_DIR="/Users/cuiqingsong/Documents/强化学习 i"
-VENV_DIR="$PROJECT_DIR/venv"
-PIDFILE="$PROJECT_DIR/.daily_trade.lock"
-LOG_DIR="$PROJECT_DIR/runs"
+PROJECT_DIR="${PROJECT_ROOT}"
+PIDFILE="${PROJECT_DIR}/.daily_trade.lock"
+LOG_DIR="${PROJECT_DIR}/runs"
 LOG_FILE="$LOG_DIR/daily_$(date +%Y%m%d).log"
 MAX_LOG_AGE=30  # 保留30天日志
 
@@ -37,21 +41,36 @@ echo "[$(date)] 日志清理完成：删除超过 ${MAX_LOG_AGE} 天的旧日志
 echo "==========================================" | tee -a "$LOG_FILE"
 echo "[$(date)] 开始执行每日交易任务" | tee -a "$LOG_FILE"
 echo "==========================================" | tee -a "$LOG_FILE"
+echo "[$(date)] Python: ${PYTHON_BIN}" | tee -a "$LOG_FILE"
+echo "[$(date)] Project: ${PROJECT_DIR}" | tee -a "$LOG_FILE"
+export DOTENV_PATH="${DOTENV_PATH:-.env.live}"
+export CONFIRM_REAL_MONEY="${CONFIRM_REAL_MONEY:-True}"
+echo "[$(date)] DOTENV_PATH: ${DOTENV_PATH}" | tee -a "$LOG_FILE"
 
-# 激活虚拟环境并执行
-source "$VENV_DIR/bin/activate"
-python crypto_trader/live_trading_okx.py --auto 2>&1 | tee -a "$LOG_FILE"
+# --- OKX 网络代理兜底 ---
+# 某些网络环境下直连 OKX 会被重置；若本地 7897 代理可用，则自动启用。
+if [ -z "${OKX_HTTPS_PROXY:-}" ] && nc -z 127.0.0.1 7897 2>/dev/null; then
+    export OKX_HTTPS_PROXY="http://127.0.0.1:7897"
+    echo "[$(date)] OKX_HTTPS_PROXY auto-enabled: ${OKX_HTTPS_PROXY}" | tee -a "$LOG_FILE"
+fi
 
+set +e
+"${PYTHON_BIN}" crypto_trader/run_live.py --auto 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
+set -e
 
 if [ $EXIT_CODE -eq 0 ]; then
     echo "[$(date)] ✓ 交易执行成功" | tee -a "$LOG_FILE"
 else
     echo "[$(date)] ✗ 交易执行失败 (退出码: $EXIT_CODE)" | tee -a "$LOG_FILE"
     # 发送告警通知（如果配置了）
-    if command -v python3 &> /dev/null; then
-        python3 -c "import sys; sys.path.insert(0, 'crypto_trader'); from alerting import send_alert; send_alert('交易执行失败', f'退出码: $EXIT_CODE')" 2>/dev/null || true
-    fi
+    "${PYTHON_BIN}" - <<PY 2>/dev/null || true
+import os
+import sys
+sys.path.insert(0, os.path.abspath("."))
+from crypto_trader.alerting import AlertManager
+AlertManager().send("ERROR", f"【日频执行失败】退出码: ${EXIT_CODE}")
+PY
 fi
 
 echo "[$(date)] 任务结束" | tee -a "$LOG_FILE"

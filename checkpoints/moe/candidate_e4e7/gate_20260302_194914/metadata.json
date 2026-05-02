@@ -1,0 +1,30 @@
+{
+  "manifest_path": "/Users/cuiqingsong/强化学习_副本/crypto_trader/configs/moe_experts.yaml",
+  "stage1_root": "/Users/cuiqingsong/强化学习_副本/checkpoints/moe/candidate_e4e7/experts_20260302_194914",
+  "load_balance_coef": 0.02,
+  "diversity_coef": 0.01,
+  "gate_temperature": 1.6,
+  "total_timesteps": 80000,
+  "usage_ema": [
+    0.09847014397382736,
+    0.12368848919868469,
+    0.1435861885547638,
+    0.1584700644016266,
+    0.12655551731586456,
+    0.13537056744098663,
+    0.11352083832025528,
+    0.10033896565437317
+  ],
+  "expert_ids": [
+    "E1_PPO_trend_return",
+    "E2_PPO_bear_drawdown",
+    "E3_PPO_range_calmar",
+    "E4_PPO_highvol_risk",
+    "E5_PPO_lowvol_carry",
+    "E6_SAC_tail_hedge",
+    "E7_SAC_fast_adapt",
+    "E8_A2C_regime_switch"
+  ],
+  "symbol": "ETH/USDT:USDT",
+  "interval": "1d"
+}

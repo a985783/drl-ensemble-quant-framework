@@ -1,0 +1,23 @@
+{
+  "expert_id": "E3_PPO_range_calmar",
+  "algorithm": "ppo",
+  "seed": 456,
+  "data_slice": "range",
+  "feature_mask": [
+    0,
+    3,
+    4,
+    6,
+    10,
+    11,
+    12
+  ],
+  "reward_profile": {
+    "return": 0.9,
+    "sortino": 1.35,
+    "drawdown": 1.5,
+    "turnover": 0.12
+  },
+  "timesteps": 180000,
+  "output_dir": "/Users/cuiqingsong/强化学习_副本/checkpoints/moe/candidate_priority/20260302_192307/batch1/experts/E3_PPO_range_calmar"
+}

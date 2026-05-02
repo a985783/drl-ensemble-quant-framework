@@ -51,7 +51,7 @@ class ModelRegistry:
     """Registry tracking stable and candidate models."""
     # Stable model (currently in production)
     stable_run_id: Optional[str] = None
-    stable_model_path: str = "checkpoints/ensemble"
+    stable_model_path: str = "checkpoints/moe/stable"
     
     # Candidate model (being tested)
     candidate_run_id: Optional[str] = None

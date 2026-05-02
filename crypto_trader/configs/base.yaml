@@ -49,13 +49,15 @@ risk:
   tier1_limit: 0.8
   tier2_drawdown: 0.10
   tier2_limit: 0.5
+  survival_drawdown: 0.15
+  survival_limit: 0.2
   atr_floor: 0.005
   vol_scale_min: 0.1
   vol_scale_max: 2.0
   max_slippage_risk_on: 0.03
 
 paths:
-  checkpoints_dir: "checkpoints/ensemble"
+  checkpoints_dir: "checkpoints/moe/stable"
   results_dir: "results"
   runs_dir: "runs"
 

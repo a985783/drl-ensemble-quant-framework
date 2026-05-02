@@ -1,0 +1,9 @@
+{
+  "latest_candidate_run_id": "20260302_155007",
+  "latest_candidate_mode": "gate_only",
+  "latest_candidate_manifest_path": "/Users/cuiqingsong/强化学习_副本/crypto_trader/configs/moe_experts_7_no_e1.yaml",
+  "latest_candidate_stage1_path": "/Users/cuiqingsong/强化学习_副本/checkpoints/moe/stable/experts",
+  "latest_candidate_stage2_path": "/Users/cuiqingsong/强化学习_副本/checkpoints/moe/candidate_7exp/gate_20260302_155007",
+  "latest_candidate_analysis_dir": "/Users/cuiqingsong/强化学习_副本/runs/analysis/candidate_7exp/20260302_155007",
+  "latest_candidate_summary_path": "/Users/cuiqingsong/强化学习_副本/runs/analysis/candidate_7exp/20260302_155007/summary.json"
+}

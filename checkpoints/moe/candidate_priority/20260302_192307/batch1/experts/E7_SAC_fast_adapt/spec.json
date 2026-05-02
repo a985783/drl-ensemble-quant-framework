@@ -1,0 +1,24 @@
+{
+  "expert_id": "E7_SAC_fast_adapt",
+  "algorithm": "sac",
+  "seed": 2025,
+  "data_slice": "range",
+  "feature_mask": [
+    0,
+    1,
+    3,
+    4,
+    6,
+    7,
+    11,
+    12
+  ],
+  "reward_profile": {
+    "return": 0.85,
+    "sortino": 1.2,
+    "drawdown": 1.4,
+    "turnover": 0.14
+  },
+  "timesteps": 220000,
+  "output_dir": "/Users/cuiqingsong/强化学习_副本/checkpoints/moe/candidate_priority/20260302_192307/batch1/experts/E7_SAC_fast_adapt"
+}

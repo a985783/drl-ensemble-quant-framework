@@ -16,13 +16,23 @@ except ImportError:
 
 class OKXDataLoader:
     def __init__(self):
-        load_dotenv()
-        self.exchange = ccxt.okx({
+        load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
+        exchange_cfg = {
             'apiKey': os.getenv('OKX_API_KEY'),
             'secret': os.getenv('OKX_SECRET_KEY'),
             'password': os.getenv('OKX_PASSPHRASE'),
             'enableRateLimit': True,
-        })
+        }
+        https_proxy = (
+            os.getenv('OKX_HTTPS_PROXY')
+            or os.getenv('HTTPS_PROXY')
+            or os.getenv('https_proxy')
+        )
+        if https_proxy:
+            exchange_cfg['httpsProxy'] = https_proxy
+            print(f"【网络】OKXDataLoader 使用代理: {https_proxy}")
+
+        self.exchange = ccxt.okx(exchange_cfg)
         # 强制使用主网 (Mainnet) 获取数据，因为模拟盘的历史数据和资金费率通常不准确或缺失
         # if os.getenv('OKX_DEMO_MODE') == 'True':
         #     self.exchange.set_sandbox_mode(True)

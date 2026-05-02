@@ -2,22 +2,28 @@
 # Stop the trading daemon
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
 
-PID=$(pgrep -f "crypto_trader/start_simulation.py")
+PID_LIST="$(pgrep -f "crypto_trader/start_simulation.py" || true)"
 
-if [ -z "$PID" ]; then
+if [ -z "$PID_LIST" ]; then
     echo "⚠️  Daemon is not running."
     exit 0
 fi
 
-echo "🛑 Stopping trading daemon (PID: $PID)..."
-kill $PID
+echo "🛑 Stopping trading daemon (PID(s): ${PID_LIST//$'\n'/ })..."
+while IFS= read -r pid; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+done <<< "$PID_LIST"
 
 # Wait for process to exit
 sleep 2
-if pgrep -f "crypto_trader/start_simulation.py" > /dev/null; then
+REMAINING="$(pgrep -f "crypto_trader/start_simulation.py" || true)"
+if [ -n "$REMAINING" ]; then
     echo "⚠️  Process didn't exit gracefully, force killing..."
-    kill -9 $PID
+    while IFS= read -r pid; do
+        [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+    done <<< "$REMAINING"
 fi
 
 echo "✅ Daemon stopped."

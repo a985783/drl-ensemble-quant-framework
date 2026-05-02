@@ -1,0 +1,24 @@
+experts:
+  - expert_id: E4_PPO_highvol_risk
+    algorithm: ppo
+    seed: 789
+    data_slice: high_vol
+    feature_mask: risk
+    timesteps: 180000
+    reward_profile:
+      return: 0.88
+      sortino: 1.20
+      drawdown: 1.60
+      turnover: 0.10
+
+  - expert_id: E2_PPO_bear_drawdown
+    algorithm: ppo
+    seed: 123
+    data_slice: bear
+    feature_mask: risk
+    timesteps: 180000
+    reward_profile:
+      return: 0.78
+      sortino: 1.30
+      drawdown: 1.70
+      turnover: 0.09

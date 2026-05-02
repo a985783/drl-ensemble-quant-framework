@@ -12,7 +12,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
 
 def print_banner():
     print("\n" + "="*60)
@@ -54,10 +54,10 @@ def show_account_status(trader):
         print(f"   • 持仓方向: {position_direction}")
         print(f"   • 持仓价值: ${position_value:,.2f}")
         
-        return equity, real_pos
+        return True, equity, real_pos
     except Exception as e:
         print(f"   ❌ 获取账户状态失败: {e}")
-        return 0, 0
+        return False, 0, 0
 
 def confirm_execution():
     """用户确认"""
@@ -84,26 +84,29 @@ def main():
     trader.auto_mode = args.auto
     
     # 显示账户状态
-    equity, pos = show_account_status(trader)
+    status_ok, equity, pos = show_account_status(trader)
     
     if args.check_only:
-        print("\n✅ 账户检查完成")
-        return
+        if status_ok:
+            print("\n✅ 账户检查完成")
+            return 0
+        print("\n❌ 账户检查失败（请先修正 .env.live 的 API/权限配置）")
+        return 1
     
     if args.force_close:
         if is_live:
             confirm = input("\n⚠️ 确认强制平仓所有持仓？(输入 'CLOSE' 确认): ")
             if confirm.strip().upper() != 'CLOSE':
                 print("已取消")
-                return
+                return 0
         trader.force_close_all()
-        return
+        return 0
     
     # 实盘模式下需要确认
     if is_live and not args.auto:
         if not confirm_execution():
             print("\n❌ 已取消执行")
-            return
+            return 0
     
     # 执行策略
     print("\n" + "="*50)
@@ -113,10 +116,17 @@ def main():
     try:
         trader.run_strategy()
         print("\n✅ 策略执行完成")
+        return 0
     except Exception as e:
         print(f"\n❌ 执行出错: {e}")
         import traceback
         traceback.print_exc()
+        # 失败必须落状态，避免被监控误判为“未执行”
+        try:
+            trader.mark_execution("failed", {"error": str(e)})
+        except Exception as mark_err:
+            print(f"[WARN] 写入失败状态文件失败: {mark_err}")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

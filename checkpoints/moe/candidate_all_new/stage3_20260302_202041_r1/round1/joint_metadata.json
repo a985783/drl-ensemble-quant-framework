@@ -1,0 +1,30 @@
+{
+  "round": 1,
+  "usage": {
+    "E1_PPO_trend_return": 0.12146800011396408,
+    "E2_PPO_bear_drawdown": 0.10948097705841064,
+    "E3_PPO_range_calmar": 0.08778730034828186,
+    "E4_PPO_highvol_risk": 0.1197577565908432,
+    "E5_PPO_lowvol_carry": 0.1835656315088272,
+    "E6_SAC_tail_hedge": 0.09757646173238754,
+    "E7_SAC_fast_adapt": 0.14300382137298584,
+    "E8_A2C_regime_switch": 0.13736100494861603
+  },
+  "allocation": {
+    "E1_PPO_trend_return": 39096,
+    "E2_PPO_bear_drawdown": 36027,
+    "E3_PPO_range_calmar": 30474,
+    "E4_PPO_highvol_risk": 38658,
+    "E5_PPO_lowvol_carry": 54993,
+    "E6_SAC_tail_hedge": 32980,
+    "E7_SAC_fast_adapt": 44609,
+    "E8_A2C_regime_switch": 43164
+  },
+  "experts_root": "checkpoints/moe/candidate_all_new/stage3_20260302_202041_r1/round1/experts",
+  "gate_root": "checkpoints/moe/candidate_all_new/stage3_20260302_202041_r1/round1/gate",
+  "load_balance_coef": 0.02,
+  "diversity_coef": 0.01,
+  "gate_temperature": 1.6,
+  "symbol": "ETH/USDT:USDT",
+  "interval": "1d"
+}

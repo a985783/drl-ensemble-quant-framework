@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Daily Trading Scheduler
-Runs crypto_trader/run_live.py --auto once per day at 08:05 China Time (UTC+8)
+Runs crypto_trader/run_live.py --auto once per day at 08:00 China Time (UTC+8)
 """
 import subprocess
 import time
@@ -17,8 +17,8 @@ os.chdir(PROJECT_ROOT)
 
 # Configuration
 EXEC_HOUR = 8       # China Time 8:00
-EXEC_MINUTE = 5     # 8:05 (5 min buffer for data readiness)
-EXEC_WINDOW = 30    # Execution window: 8:05 - 8:35
+EXEC_MINUTE = 0     # 08:00
+EXEC_WINDOW = 30    # Execution window: 08:00 - 08:30
 
 
 def get_cn_now():

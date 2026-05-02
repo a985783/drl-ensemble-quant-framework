@@ -1,0 +1,34 @@
+experts:
+- expert_id: E6_SAC_tail_hedge
+  algorithm: sac
+  seed: 2024
+  data_slice: high_vol
+  feature_mask: risk
+  timesteps: 180000
+  reward_profile:
+    return: 0.8
+    sortino: 1.2
+    drawdown: 1.8
+    turnover: 0.05
+- expert_id: E7_SAC_fast_adapt
+  algorithm: sac
+  seed: 2025
+  data_slice: range
+  feature_mask: switch
+  timesteps: 180000
+  reward_profile:
+    return: 1.0
+    sortino: 0.9
+    drawdown: 1.1
+    turnover: 0.03
+- expert_id: E8_A2C_regime_switch
+  algorithm: a2c
+  seed: 3000
+  data_slice: full
+  feature_mask: switch
+  timesteps: 120000
+  reward_profile:
+    return: 1.0
+    sortino: 1.0
+    drawdown: 1.1
+    turnover: 0.03

@@ -55,6 +55,9 @@ class RiskConfig:
     tier1_limit: float = 0.8
     tier2_drawdown: float = 0.10
     tier2_limit: float = 0.5
+    # Survival mode thresholds
+    survival_drawdown: float = 0.15
+    survival_limit: float = 0.2
     # Volatility scaling guards
     atr_floor: float = 0.005
     vol_scale_min: float = 0.1
@@ -66,7 +69,7 @@ class RiskConfig:
 @dataclass
 class PathConfig:
     """Path configuration."""
-    checkpoints_dir: str = "checkpoints/ensemble"
+    checkpoints_dir: str = "checkpoints/moe/stable"
     results_dir: str = "results"
     runs_dir: str = "runs"
 

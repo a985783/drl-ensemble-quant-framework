@@ -7,10 +7,11 @@ from dotenv import load_dotenv
 
 class AlertManager:
     def __init__(self):
-        load_dotenv()  # Ensure .env is loaded
+        dotenv_path = os.getenv("DOTENV_PATH", ".env")
+        load_dotenv(dotenv_path=dotenv_path)
         self.provider = (os.getenv("ALERT_PROVIDER") or "").strip().lower()
         self.webhook = (os.getenv("ALERT_WEBHOOK_URL") or "").strip()
-        self.enabled = bool(self.provider and self.webhook)
+        self.enabled = bool(self.provider and self.webhook and self.webhook.startswith(("http://", "https://")))
         if self.enabled:
             print(f"✅ [Alert] Enabled provider: {self.provider}")
         else:

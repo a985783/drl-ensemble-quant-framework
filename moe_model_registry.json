@@ -1,0 +1,25 @@
+{
+  "stable_run_id": "moe_run5_v3_t16_r2",
+  "stable_manifest_path": "crypto_trader/configs/moe_experts.yaml",
+  "stable_experts_path": "checkpoints/moe/stable/experts",
+  "stable_gate_path": "checkpoints/moe/stable/gate",
+  "stable_gate_temperature": 0.68,
+  "selection_protocol": "select gate_temperature on train80 only, then evaluate once on oos20",
+  "train80_period": [
+    "2020-07-19",
+    "2025-01-04"
+  ],
+  "oos20_period": [
+    "2025-01-05",
+    "2026-02-16"
+  ],
+  "oos20_metrics": {
+    "total_return": 0.9083411482304037,
+    "benchmark_return": -0.4526952695269527,
+    "alpha": 1.3610364177573564,
+    "max_dd": 0.16677684732665354,
+    "final_net_worth": 19083.411482304036
+  },
+  "locked_at_utc": "2026-02-17T06:01:47.788239+00:00",
+  "notes": "Locked and pruned to single current MoE version (stable only)."
+}

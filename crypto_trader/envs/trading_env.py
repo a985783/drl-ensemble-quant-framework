@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Trading Environment with Four-Piece Turnover Reduction Constraints
 Phase B: Constraints integrated into env for PPO to learn within constraints
@@ -13,6 +15,66 @@ from gymnasium import spaces
 import numpy as np
 import pandas as pd
 
+try:
+    from crypto_trader.asset_profile import get_asset_profile
+except ImportError:
+    from asset_profile import get_asset_profile
+
+
+def apply_execution_constraints_core(
+    target_pos: float,
+    current_pos: float,
+    last_flip_marker: float,
+    current_marker: float,
+    tau: float,
+    delta_max: float,
+    cooldown_window: float,
+):
+    """
+    Shared execution-constraint core for both backtest and live paths.
+    Markers can be step numbers or timestamps, as long as units are consistent
+    with cooldown_window.
+    """
+    reason = "Normal"
+
+    target_pos = float(np.clip(target_pos, -1.0, 1.0))
+    current_pos = float(np.clip(current_pos, -1.0, 1.0))
+    last_flip_marker = float(last_flip_marker)
+    current_marker = float(current_marker)
+    tau = float(max(tau, 0.0))
+    delta_max = float(max(delta_max, 0.0))
+    cooldown_window = float(max(cooldown_window, 0.0))
+
+    if abs(target_pos - current_pos) < tau:
+        target_pos = current_pos
+        reason = "Hysteresis"
+
+    delta = float(np.clip(target_pos - current_pos, -delta_max, delta_max))
+    if abs(target_pos - current_pos) > delta_max:
+        reason = "SlewRate"
+
+    cand_pos = current_pos + delta
+
+    in_cd = (current_marker - last_flip_marker) < cooldown_window
+    wants_flip = (
+        np.sign(current_pos) != 0
+        and np.sign(cand_pos) != 0
+        and np.sign(cand_pos) != np.sign(current_pos)
+    )
+
+    exec_pos = cand_pos
+    new_flip_marker = last_flip_marker
+
+    if in_cd and wants_flip:
+        exec_pos = 0.0
+        reason = "Cooldown"
+    elif wants_flip:
+        new_flip_marker = current_marker
+        reason = "Flip"
+
+    exec_pos = float(np.clip(exec_pos, -1.0, 1.0))
+    return exec_pos, float(new_flip_marker), reason
+
 class TradingEnv(gym.Env):
     """
     Trading environment with execution constraints.
@@ -21,18 +83,48 @@ class TradingEnv(gym.Env):
     """
     metadata = {'render_modes': ['human']}
 
-    # === Constraint Parameters ===
-    TAU = 0.25         # Hysteresis threshold
-    DELTA_MAX = 0.15   # Max position change per step
-    COOLDOWN_N = 3     # Min steps between sign flips
-    
-    # === Cost Parameters (OKX Perpetual) ===
-    K_SINGLE = 0.0008  # Single-side cost (fee 0.05% + slip 0.03%)
-    FUNDING_DAILY = 0.0003  # Daily funding rate
+    # === Constraint Defaults ===
+    TAU = 0.25
+    DELTA_MAX = 0.15
+    COOLDOWN_N = 3
+    TARGET_ATR_PCT = 0.05
 
-    def __init__(self, df: pd.DataFrame, initial_balance: float = 10000.0,
-                 fee_rate: float = 0.001, risk_manager=None, enable_kill_switch: bool = False,
-                 atr_floor: float = 0.005, vol_scale_min: float = 0.1, vol_scale_max: float = 2.0):
+    # === Cost Defaults (OKX Perpetual) ===
+    K_SINGLE = 0.0008
+    FUNDING_DAILY = 0.0003
+    MIN_NET_WORTH = 1e-8
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        initial_balance: float = 10000.0,
+        fee_rate: float = 0.001,
+        risk_manager=None,
+        enable_kill_switch: bool = False,
+        atr_floor: float = 0.005,
+        vol_scale_min: float = 0.1,
+        vol_scale_max: float = 2.0,
+        feature_mask=None,
+        reward_profile=None,
+        symbol: str | None = None,
+        target_atr_pct: float | None = None,
+        tau: float | None = None,
+        delta_max: float | None = None,
+        cooldown_n: int | None = None,
+        k_single: float | None = None,
+        funding_daily: float | None = None,
+        regime_mask: np.ndarray | None = None,
+        regime_main_reward_weight: float = 1.0,
+        regime_off_reward_weight: float = 1.0,
+        sat_penalty_coef: float = 0.0,
+        sat_threshold: float = 0.9,
+        directional_bias_coef: float = 0.0,
+        directional_bias_alpha: float = 0.01,
+        action_cap: float = 1.0,
+        funding_cost_multiplier: float = 1.0,
+        short_squeeze_threshold: float | None = None,
+        short_squeeze_max_short: float = 0.25,
+    ):
         super(TradingEnv, self).__init__()
         
         self.df = df.reset_index(drop=True)
@@ -40,15 +132,63 @@ class TradingEnv(gym.Env):
         self.fee_rate = fee_rate
         self.risk_manager = risk_manager
         self.enable_kill_switch = enable_kill_switch
-        self.atr_floor = atr_floor
-        self.vol_scale_min = vol_scale_min
-        self.vol_scale_max = vol_scale_max
+        profile = get_asset_profile(symbol)
+        env_cfg = profile.env
+        # Keep ETH path on legacy observation scaling so locked ETH models
+        # remain behaviorally consistent with historical training/inference.
+        self.use_legacy_observation = (profile.key == "ETH")
+        self.atr_floor = float(atr_floor if atr_floor is not None else env_cfg.atr_floor)
+        self.vol_scale_min = float(vol_scale_min if vol_scale_min is not None else env_cfg.vol_scale_min)
+        self.vol_scale_max = float(vol_scale_max if vol_scale_max is not None else env_cfg.vol_scale_max)
+        self.target_atr_pct = float(target_atr_pct if target_atr_pct is not None else env_cfg.target_atr_pct)
+        self.tau = float(tau if tau is not None else env_cfg.tau)
+        self.delta_max = float(delta_max if delta_max is not None else env_cfg.delta_max)
+        self.cooldown_n = int(cooldown_n if cooldown_n is not None else env_cfg.cooldown_n)
+        self.k_single = float(k_single if k_single is not None else env_cfg.k_single)
+        self.funding_daily = float(funding_daily if funding_daily is not None else env_cfg.funding_daily)
+        self.regime_mask = None
+        if regime_mask is not None:
+            mask_arr = np.asarray(regime_mask).astype(np.float32).reshape(-1)
+            if len(mask_arr) != len(self.df):
+                raise ValueError(f"regime_mask length mismatch: {len(mask_arr)} != {len(self.df)}")
+            self.regime_mask = mask_arr
+        self.regime_main_reward_weight = float(max(regime_main_reward_weight, 0.0))
+        self.regime_off_reward_weight = float(max(regime_off_reward_weight, 0.0))
+        self.sat_penalty_coef = float(max(sat_penalty_coef, 0.0))
+        self.sat_threshold = float(np.clip(sat_threshold, 0.0, 1.0))
+        self.directional_bias_coef = float(max(directional_bias_coef, 0.0))
+        self.directional_bias_alpha = float(np.clip(directional_bias_alpha, 0.0, 1.0))
+        self.action_cap = float(np.clip(action_cap, 0.0, 1.0))
+        self.funding_cost_multiplier = float(max(funding_cost_multiplier, 0.0))
+        self.short_squeeze_threshold = None if short_squeeze_threshold is None else float(max(short_squeeze_threshold, 0.0))
+        self.short_squeeze_max_short = float(np.clip(short_squeeze_max_short, 0.0, 1.0))
+        self.feature_mask = None
+        if feature_mask is not None:
+            mask = sorted({int(i) for i in feature_mask})
+            for i in mask:
+                if i < 0 or i >= 13:
+                    raise ValueError(f"feature_mask index out of range: {i}")
+            self.feature_mask = mask
+        default_reward_profile = {
+            "return": 1.0,
+            "sortino": 1.0,
+            "drawdown": 1.0,
+            "turnover": 0.0,
+        }
+        reward_profile = reward_profile or {}
+        self.reward_profile = {
+            "return": float(reward_profile.get("return", default_reward_profile["return"])),
+            "sortino": float(reward_profile.get("sortino", default_reward_profile["sortino"])),
+            "drawdown": float(reward_profile.get("drawdown", default_reward_profile["drawdown"])),
+            "turnover": float(reward_profile.get("turnover", default_reward_profile["turnover"])),
+        }
         
         # Action Space: Continuous [-1, 1] (target position intent)
         self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
         
-        # Observation Space: 
-        # [Pos, Cooldown_Remaining, UnPnL, NW_Chg, Prob, RSI, Vol, MACD, BB_Width, Dist_SMA, ATR, Vol_Ratio]
+        # Observation Space:
+        # [Pos, Cooldown_Remaining, UnPnL, NW_Chg, Prob, RSI, Vol, MACD_*, BB_Width_*, Dist_SMA, ATR_Pct, Vol_Ratio]
+        # Keep legacy MACD/BB scaling to preserve ETH model behavior.
         # Shape: (13,) - Added cooldown_remaining as new dimension
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(13,), dtype=np.float32)
         
@@ -74,7 +214,8 @@ class TradingEnv(gym.Env):
         # Legacy compatibility
         self.current_position = 0.0
         self.prev_action = 0.0
-        
+        self.position_bias_ema = 0.0
+
         self.returns_history = []
         self.negative_returns_history = []
 
@@ -94,6 +235,7 @@ class TradingEnv(gym.Env):
         
         self.current_position = 0.0
         self.prev_action = 0.0
+        self.position_bias_ema = 0.0
         self.returns_history = []
         self.negative_returns_history = []
         
@@ -108,32 +250,17 @@ class TradingEnv(gym.Env):
         Apply 4-piece turnover reduction constraints
         Returns executed position after constraints
         """
-        target_pos = float(np.clip(target_pos, -1.0, 1.0))
-        pos = float(self.pos)
-
-        # (1) Hysteresis: Small changes don't trigger trades
-        if abs(target_pos - pos) < self.TAU:
-            target_pos = pos
-
-        # (2) Slew-rate limit: Max change per step
-        delta = float(np.clip(target_pos - pos, -self.DELTA_MAX, self.DELTA_MAX))
-        cand_pos = pos + delta
-
-        # (3) Cooldown: Only restrict sign flips (allow reduction to 0)
-        in_cd = (self.current_step - self.last_flip_t) < self.COOLDOWN_N
-        wants_flip = (np.sign(pos) != 0 and 
-                     np.sign(cand_pos) != 0 and 
-                     np.sign(cand_pos) != np.sign(pos))
-
-        if in_cd and wants_flip:
-            # During cooldown: can't flip, go to 0 instead
-            exec_pos = 0.0
-        else:
-            exec_pos = cand_pos
-            if wants_flip:
-                self.last_flip_t = self.current_step
-
-        return float(np.clip(exec_pos, -1.0, 1.0))
+        exec_pos, new_flip_t, _ = apply_execution_constraints_core(
+            target_pos=target_pos,
+            current_pos=self.pos,
+            last_flip_marker=self.last_flip_t,
+            current_marker=self.current_step,
+            tau=self.tau,
+            delta_max=self.delta_max,
+            cooldown_window=self.cooldown_n,
+        )
+        self.last_flip_t = int(new_flip_t)
+        return exec_pos
 
     def _get_observation(self):
         row = self.df.iloc[self.current_step]
@@ -142,7 +269,14 @@ class TradingEnv(gym.Env):
         nw_change_pct = (self.net_worth - self.prev_net_worth) / self.prev_net_worth if self.prev_net_worth > 0 else 0
         
         # Cooldown remaining normalized to [0, 1]
-        cooldown_remaining = max(0, self.COOLDOWN_N - (self.current_step - self.last_flip_t)) / self.COOLDOWN_N
+        cooldown_remaining = max(0, self.cooldown_n - (self.current_step - self.last_flip_t)) / max(self.cooldown_n, 1)
+        close = float(max(row['Close'], 1e-8))
+        if self.use_legacy_observation:
+            macd_feature = float(row['MACD'] / 100.0)
+            bb_width_feature = float(row['BB_Width'] / 1000.0)
+        else:
+            macd_feature = float(row['MACD'] / close)
+            bb_width_feature = float(row['BB_Width'] / close)
         
         obs = np.array([
             self.pos,                    # Current position
@@ -152,28 +286,42 @@ class TradingEnv(gym.Env):
             row['Signal_Proba'],
             row['RSI'] / 100.0, 
             row['Rolling_Vol'],
-            row['MACD'] / 100.0, 
-            row['BB_Width'] / 1000.0,
+            macd_feature,
+            bb_width_feature,
             row['Dist_SMA_200'],
-            row['ATR'] / row['Close'],
+            row['ATR'] / close,
             row['Vol_Ratio'],
             float(np.sign(self.pos))     # Current direction (helps agent)
         ], dtype=np.float32)
+
+        if self.feature_mask is not None:
+            masked = np.zeros_like(obs)
+            masked[self.feature_mask] = obs[self.feature_mask]
+            obs = masked
         
         return obs
 
+    @staticmethod
+    def _safe_log_return(curr_net_worth: float, prev_net_worth: float) -> float:
+        safe_curr = max(float(curr_net_worth), TradingEnv.MIN_NET_WORTH)
+        safe_prev = max(float(prev_net_worth), TradingEnv.MIN_NET_WORTH)
+        value = float(np.log(safe_curr / safe_prev))
+        if not np.isfinite(value):
+            return -1.0
+        return value
+
     def step(self, action):
-        raw_action = float(action[0])
+        raw_action = float(np.clip(action[0], -self.action_cap, self.action_cap))
         
         row = self.df.iloc[self.current_step]
         current_price = row['Close']
         
         # === Volatility Targeting (kept for stability) ===
-        current_atr_pct = (row['ATR'] / current_price) if row['ATR'] > 0 else 0.02
+        current_atr_pct = (row['ATR'] / current_price) if row['ATR'] > 0 else self.target_atr_pct
         if current_atr_pct < self.atr_floor:
             current_atr_pct = self.atr_floor
         
-        vol_scale = 0.05 / current_atr_pct
+        vol_scale = self.target_atr_pct / current_atr_pct
         vol_scale = np.clip(vol_scale, self.vol_scale_min, self.vol_scale_max)
         
         target_pos = raw_action * vol_scale
@@ -184,6 +332,15 @@ class TradingEnv(gym.Env):
             override = self.risk_manager.check_risk(drawdown, target_pos)
             if override is not None:
                 target_pos = override
+
+        # Short squeeze brake (training safety regularizer):
+        # in strong intraday up-move, cap short intent to avoid tail-loss behavior.
+        if self.short_squeeze_threshold is not None and target_pos < 0:
+            prev_close = self.df.iloc[self.current_step-1]['Close'] if self.current_step > 0 else row['Open']
+            prev_close = float(max(prev_close, 1e-8))
+            intraday_up = float(row.get('High', current_price) / prev_close - 1.0)
+            if intraday_up >= self.short_squeeze_threshold:
+                target_pos = max(target_pos, -self.short_squeeze_max_short)
 
         target_pos = np.clip(target_pos, -1, 1)
         
@@ -238,15 +395,25 @@ class TradingEnv(gym.Env):
         # Trade cost: only on actual turnover
         trade_cost = 0.0
         if turnover > 0.001:
-            trade_cost = turnover * self.net_worth * self.K_SINGLE
+            cost_base = max(float(self.net_worth), 0.0)
+            trade_cost = turnover * cost_base * self.k_single
         
         # Funding cost: on position size
-        funding_cost = abs(pos_exec) * self.net_worth * self.FUNDING_DAILY
+        # 使用动态 Funding Rate（若数据中包含 Funding_Rate 列），否则用固定值
+        if 'Funding_Rate' in self.df.columns:
+            daily_rate = float(row.get('Funding_Rate', self.funding_daily))
+        else:
+            daily_rate = self.funding_daily
+        funding_base = max(float(self.net_worth), 0.0)
+        funding_cost = abs(pos_exec) * funding_base * daily_rate
+        funding_cost *= self.funding_cost_multiplier
         
         # === Update Portfolio ===
         self.prev_net_worth = self.net_worth
         
         current_equity = self.balance + (self.shares * current_price)
+        if not np.isfinite(current_equity):
+            current_equity = 0.0
         self.max_net_worth = max(current_equity, self.max_net_worth)
         
         target_asset_value = current_equity * pos_exec
@@ -261,18 +428,24 @@ class TradingEnv(gym.Env):
         
         # Final Net Worth
         self.net_worth = self.balance + (self.shares * current_price)
+        bankrupt = self.net_worth <= self.MIN_NET_WORTH or (not np.isfinite(self.net_worth))
+        if bankrupt:
+            self.net_worth = self.MIN_NET_WORTH
+            self.balance = max(self.balance, 0.0)
+            self.shares = 0.0
         self.current_position = pos_exec
         
         # === Reward Calculation ===
-        step_return = np.log(self.net_worth / self.prev_net_worth) if self.prev_net_worth > 0 else 0
+        step_return = self._safe_log_return(self.net_worth, self.prev_net_worth)
         self.returns_history.append(step_return)
         
         if step_return < 0:
             self.negative_returns_history.append(step_return)
             
-        reward = step_return
+        reward = self.reward_profile["return"] * step_return
         
         # Sortino bonus for stable uptrend
+        sortino_bonus = 0.0
         if len(self.returns_history) > 30:
             downside_std = np.std(self.negative_returns_history[-30:]) if len(self.negative_returns_history) > 0 else 0.01
             if downside_std < 1e-6: downside_std = 0.01
@@ -281,12 +454,40 @@ class TradingEnv(gym.Env):
             sortino = rolling_mean / downside_std
             
             if sortino > 0.5:
-                reward += 0.05 * sortino
+                sortino_bonus = 0.05 * sortino
+        reward += self.reward_profile["sortino"] * sortino_bonus
         
         # Drawdown penalty
-        current_drawdown = (self.max_net_worth - self.net_worth) / self.max_net_worth
+        safe_peak = max(float(self.max_net_worth), self.MIN_NET_WORTH)
+        current_drawdown = (safe_peak - self.net_worth) / safe_peak
+        drawdown_penalty = 0.0
         if current_drawdown > 0.05:
-            reward -= current_drawdown * 0.5 
+            drawdown_penalty = current_drawdown * 0.5
+        reward -= self.reward_profile["drawdown"] * drawdown_penalty
+        reward -= self.reward_profile["turnover"] * turnover
+
+        # Regime-weighted reward shaping (training mode):
+        # reward contribution is emphasized in expert target regime.
+        in_regime = 1.0
+        if self.regime_mask is not None:
+            in_regime = float(self.regime_mask[self.current_step] > 0.5)
+            reward *= self.regime_main_reward_weight if in_regime > 0.5 else self.regime_off_reward_weight
+
+        # Saturation penalty: discourage persistent full-size actions.
+        if self.sat_penalty_coef > 0:
+            sat_excess = max(0.0, abs(raw_action) - self.sat_threshold)
+            reward -= self.sat_penalty_coef * (sat_excess ** 2)
+
+        # Directional-bias penalty: discourage long-lived one-sided positioning.
+        if self.directional_bias_coef > 0 and self.directional_bias_alpha > 0:
+            self.position_bias_ema = (
+                (1.0 - self.directional_bias_alpha) * self.position_bias_ema
+                + self.directional_bias_alpha * float(pos_exec)
+            )
+            reward -= self.directional_bias_coef * abs(self.position_bias_ema)
+
+        if not np.isfinite(reward):
+            reward = -1.0
             
         # Remove the "activity incentive" penalty - it was causing excessive trading
         # The constraints now handle position stability
@@ -295,7 +496,7 @@ class TradingEnv(gym.Env):
             
         # Done Flag
         self.current_step += 1
-        terminated = self.current_step >= len(self.df) - 1
+        terminated = (self.current_step >= len(self.df) - 1) or bankrupt
         truncated = False
         
         info = {
@@ -307,6 +508,9 @@ class TradingEnv(gym.Env):
             'turnover': turnover,
             'trade_cost': trade_cost,
             'funding_cost': funding_cost,
+            'funding_rate': daily_rate,
+            'in_regime': in_regime,
+            'position_bias_ema': float(self.position_bias_ema),
         }
         
         return self._get_observation(), reward, terminated, truncated, info

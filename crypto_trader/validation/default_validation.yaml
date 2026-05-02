@@ -1,0 +1,41 @@
+defaults:
+  manifest: crypto_trader/configs/moe_experts.yaml
+  stage1_root: checkpoints/moe/stable/experts
+  stage2_root: checkpoints/moe/stable/gate
+  data_path: crypto_trader/data_moe_20200101_20260216_oos20.csv
+  registry_path: moe_model_registry.json
+  walk_forward_metrics: crypto_trader/walk_forward/results/walk_forward_metrics.csv
+  output_root: results/validation
+  gate_temperature: 0.68
+  symbol: ETH/USDT:USDT
+
+scenarios:
+  stable_oos:
+    enabled: true
+  signal_delay_1d:
+    enabled: true
+  signal_neutral_0_5:
+    enabled: true
+  random_baseline:
+    enabled: true
+    n_runs: 10
+    seed: 42
+  gate_temperatures:
+    enabled: true
+    values: [0.5, 0.68, 1.0, 1.5]
+  cost_stress:
+    enabled: true
+    multipliers: [2.0, 5.0]
+  funding_stress:
+    enabled: true
+    multipliers: [2.0, 5.0]
+  execution_perturbations:
+    enabled: true
+    tau_multipliers: [0.8, 1.2]
+    delta_max_multipliers: [0.8, 1.2]
+    cooldown_values: [1, 5]
+  ablations:
+    enabled: true
+    uniform_gate: true
+    average_experts: true
+    drop_top_contributor: true

@@ -1,0 +1,139 @@
+# =============================================================================
+# Parameter Sweep Configuration — MoE Next-Bar Execution
+# =============================================================================
+# Generates ≥50 parameter combinations for systematic backtesting.
+# Sweep types:
+#   1. Single-parameter sweeps: vary one dimension at a time from baseline
+#   2. Multi-parameter interactions: cartesian product of selected pairs
+#
+# Each combo is run with execution_mode="next_bar" (non-negotiable).
+# No retraining — existing stable checkpoints are used with env_overrides.
+# =============================================================================
+
+defaults:
+  # Paths (mirrors alpha_validation defaults)
+  manifest: crypto_trader/configs/moe_experts.yaml
+  stage1_root: checkpoints/moe/stable/experts
+  stage2_root: checkpoints/moe/stable/gate
+  data_path: crypto_trader/data_moe_20200101_20260216_oos20.csv
+  symbol: ETH/USDT:USDT
+  registry_path: moe_model_registry.json
+
+  # Execution mode — ALWAYS next_bar for this sweep
+  execution_mode: next_bar
+
+  # Base cost rates used to compute absolute k_single / funding_daily
+  # from user-facing multipliers (see baseline.k_single_multiplier etc.)
+  base_k_single: 0.0008       # 0.08 % single-trade fee
+  base_funding_daily: 0.0003  # 0.03 % daily funding rate
+
+  # ------------------------------------------------------------------
+  # Baseline (current stable parameters)
+  # ------------------------------------------------------------------
+  # Every single-param sweep varies ONE field below while keeping the rest.
+  baseline:
+    tau: 0.25                 # Hysteresis threshold
+    temperature: 0.68          # Gate softmax temperature
+    delta_max: 0.15            # Max single-step position change
+    cooldown_n: 3              # Cooldown days after direction flip
+    k_single_multiplier: 1.0   # × base_k_single → absolute k_single
+    funding_multiplier: 1.0    # × base_funding_daily → absolute funding_daily
+    gate_mode: model          # model | uniform
+    disabled_experts: []       # empty = all experts active
+
+# --------------------------------------------------------------------------
+# Sweep Dimensions (single-param)
+# --------------------------------------------------------------------------
+# For each dimension the runner generates combos where only that dimension
+# differs from the baseline. Values equal to the baseline are skipped.
+# --------------------------------------------------------------------------
+dimensions:
+  tau:
+    - 0.08
+    - 0.10
+    - 0.12
+    - 0.15
+    - 0.18
+    - 0.20
+    - 0.22
+    - 0.25
+    - 0.28
+    - 0.30
+    - 0.35
+
+  temperature:
+    - 0.3
+    - 0.5
+    - 0.68
+    - 0.8
+    - 1.0
+    - 1.2
+    - 1.5
+    - 2.0
+    - 2.5
+    - 3.0
+
+  delta_max:
+    - 0.08
+    - 0.10
+    - 0.12
+    - 0.15
+    - 0.18
+    - 0.20
+    - 0.25
+
+  cooldown_n:
+    - 1
+    - 2
+    - 3
+    - 5
+    - 7
+
+  k_single_multiplier:
+    - 0.5
+    - 1.0
+    - 2.0
+
+  funding_multiplier:
+    - 1.0
+    - 2.0
+    - 3.0
+
+  gate_mode:
+    - model
+    - uniform
+
+  disabled_experts:
+    - []
+    - ["E4_PPO_highvol_risk"]
+
+# --------------------------------------------------------------------------
+# Multi-parameter Interactions
+# --------------------------------------------------------------------------
+# Cartasian-product grids of selected parameter pairs.  These capture
+# interaction effects that single-param sweeps cannot detect.
+# --------------------------------------------------------------------------
+interactions:
+  - name: tau_x_delta_max
+    params: [tau, delta_max]
+    grid:
+      tau: [0.10, 0.25, 0.30]
+      delta_max: [0.10, 0.15, 0.20]
+
+  - name: tau_x_temperature
+    params: [tau, temperature]
+    grid:
+      tau: [0.10, 0.20, 0.30]
+      temperature: [0.5, 0.68, 1.0, 2.0]
+
+  - name: delta_max_x_cooldown
+    params: [delta_max, cooldown_n]
+    grid:
+      delta_max: [0.10, 0.20]
+      cooldown_n: [1, 5]
+
+  - name: cost_x_funding
+    params: [k_single_multiplier, funding_multiplier]
+    grid:
+      k_single_multiplier: [0.5, 2.0]
+      funding_multiplier: [1.0, 2.0]

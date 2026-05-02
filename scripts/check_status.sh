@@ -1,11 +1,18 @@
 #!/bin/bash
 # Check status of trading daemon
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-LOG_FILE="$PROJECT_ROOT/runs/daemon.log"
+set -euo pipefail
 
-PID_LIST=$(pgrep -f "crypto_trader/start_simulation.py")
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
+LOG_FILE="${LOG_DIR}/daemon.log"
+
+PID_LIST="$(pgrep -f "crypto_trader/start_simulation.py" || true)"
+UID_NUM="$(id -u)"
+TRADE_LABEL="com.rlmoe.trade.daily"
+CHECK_LABEL="com.rlmoe.trade.checks"
+MON_DAILY_LABEL="com.rlmoe.monitor.daily"
+MON_WEEKLY_LABEL="com.rlmoe.monitor.weekly"
 
 echo "=========================================="
 echo "  Trading Daemon Status"
@@ -24,6 +31,17 @@ if [ -n "$PID_LIST" ]; then
 else
     echo "❌ Status: STOPPED"
 fi
+
+echo ""
+echo "🗓️  Launchd Jobs:"
+echo "------------------------------------------"
+for label in "${TRADE_LABEL}" "${CHECK_LABEL}" "${MON_DAILY_LABEL}" "${MON_WEEKLY_LABEL}"; do
+    if launchctl print "gui/${UID_NUM}/${label}" >/dev/null 2>&1; then
+        echo "✅ ${label}: LOADED"
+    else
+        echo "❌ ${label}: NOT_LOADED"
+    fi
+done
 
 echo ""
 echo "📜 Recent Logs ($LOG_FILE):"

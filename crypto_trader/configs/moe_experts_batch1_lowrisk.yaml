@@ -1,0 +1,36 @@
+experts:
+  - expert_id: E3_PPO_range_calmar
+    algorithm: ppo
+    seed: 456
+    data_slice: range
+    feature_mask: carry
+    timesteps: 180000
+    reward_profile:
+      return: 0.90
+      sortino: 1.35
+      drawdown: 1.50
+      turnover: 0.12
+
+  - expert_id: E5_PPO_lowvol_carry
+    algorithm: ppo
+    seed: 1024
+    data_slice: low_vol
+    feature_mask: carry
+    timesteps: 180000
+    reward_profile:
+      return: 0.90
+      sortino: 1.15
+      drawdown: 1.30
+      turnover: 0.08
+
+  - expert_id: E7_SAC_fast_adapt
+    algorithm: sac
+    seed: 2025
+    data_slice: range
+    feature_mask: switch
+    timesteps: 220000
+    reward_profile:
+      return: 0.85
+      sortino: 1.20
+      drawdown: 1.40
+      turnover: 0.14

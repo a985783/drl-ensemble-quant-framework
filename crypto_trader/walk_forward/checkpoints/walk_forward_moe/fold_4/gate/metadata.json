@@ -1,0 +1,55 @@
+{
+  "selected_temperature": 0.5,
+  "candidate_results": [
+    {
+      "temp": 0.5,
+      "val_sharpe": 1.109704108697339,
+      "val_return": 0.4854463696701758,
+      "val_alpha": 0.06715815909823342
+    },
+    {
+      "temp": 0.6,
+      "val_sharpe": 0.8688163261030545,
+      "val_return": 0.23739597903793438,
+      "val_alpha": -0.180892231534008
+    },
+    {
+      "temp": 0.68,
+      "val_sharpe": 0.826664520598649,
+      "val_return": 0.317416736141004,
+      "val_alpha": -0.10087147443093836
+    },
+    {
+      "temp": 0.8,
+      "val_sharpe": 0.7273559074867336,
+      "val_return": 0.2433019044442688,
+      "val_alpha": -0.17498630612767357
+    },
+    {
+      "temp": 1.0,
+      "val_sharpe": 0.9443415036178878,
+      "val_return": 0.30447000380878564,
+      "val_alpha": -0.11381820676315674
+    },
+    {
+      "temp": 1.5,
+      "val_sharpe": 0.842629238304663,
+      "val_return": 0.2834021202559896,
+      "val_alpha": -0.13488609031595278
+    },
+    {
+      "temp": 2.0,
+      "val_sharpe": 0.9623831129195481,
+      "val_return": 0.32881026395149204,
+      "val_alpha": -0.08947794662045033
+    }
+  ],
+  "usage_ema": {
+    "E2_PPO_bear_drawdown": 0.40318533778190613,
+    "E4_PPO_highvol_risk": 0.14064499735832214,
+    "E5_PPO_lowvol_carry": 0.2758142352104187,
+    "E7_SAC_fast_adapt": 0.18035642802715302
+  },
+  "fold_id": "fold_4",
+  "gate_timesteps": 120000
+}

@@ -6,6 +6,7 @@ import json
 import csv
 import time
 import argparse
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -14,9 +15,17 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from data_loader import DataLoader
 from features import FeatureEngineer
-from envs.trading_env import TradingEnv
-from risk_manager import RiskManager
+from envs.trading_env import TradingEnv, apply_execution_constraints_core
+from risk_manager import build_risk_manager_from_config
 from models.signal_model import SignalPredictor
+
+# MoE Inference
+from backtest_moe import (
+    ExpertRuntime, _load_expert_runtimes, _mask_obs, _env_kwargs_for_symbol,
+)
+from train_moe_stage2_gate import (
+    build_gate_artifacts, softmax_weights,
+)
 
 # Execution Safety (Phase 1)
 try:
@@ -69,28 +78,72 @@ from config import get_default_config
 config = get_default_config()
 
 DATA_SYMBOL = config.data.symbol
-MODELS_DIR = os.path.join(BASE_DIR, "checkpoints/ensemble")
-SEEDS = config.seed.ensemble_seeds
+
+# === MoE 配置 (8 专家 + 门控网络) ===
+MOE_MANIFEST = os.path.join(SCRIPT_DIR, "configs/moe_experts.yaml")
+MOE_STAGE1_ROOT = os.path.join(BASE_DIR, "checkpoints/moe/stable/experts")
+MOE_STAGE2_ROOT = os.path.join(BASE_DIR, "checkpoints/moe/stable/gate")
+GATE_TEMPERATURE = 0.68
 STATE_FILE = os.path.join(BASE_DIR, "trading_state.json")  # 记录策略状态 (last_flip_time 等)
 INITIAL_CAPITAL_FILE = os.path.join(BASE_DIR, "initial_capital.json")
 
 
+def latest_completed_daily_start(now_utc=None) -> pd.Timestamp:
+    """Return the UTC bar-start timestamp for the latest completed daily candle."""
+    from datetime import datetime, timezone
+
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    ts = pd.Timestamp(now_utc)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.normalize() - pd.Timedelta(days=1)
+
+
+def drop_incomplete_daily_bar(df: pd.DataFrame, now_utc=None) -> pd.DataFrame:
+    """Remove current/future daily bar-start rows so live inference sees completed bars only."""
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    idx = pd.DatetimeIndex(out.index)
+    if idx.tz is None:
+        idx = idx.tz_localize("UTC")
+    else:
+        idx = idx.tz_convert("UTC")
+    out.index = idx
+    cutoff = latest_completed_daily_start(now_utc)
+    return out[out.index <= cutoff]
+
+
 class OKXTrader:
     def __init__(self):
-        load_dotenv()
+        dotenv_path = os.getenv("DOTENV_PATH", ".env")
+        load_dotenv(dotenv_path=dotenv_path)
         self.api_key = os.getenv('OKX_API_KEY')
         self.secret_key = os.getenv('OKX_SECRET_KEY')
         self.passphrase = os.getenv('OKX_PASSPHRASE')
         self.is_demo = os.getenv('OKX_DEMO_MODE') == 'True'
         self.margin_mode = os.getenv('OKX_MARGIN_MODE')
         self.position_mode = os.getenv('OKX_POSITION_MODE')
-        
-        self.exchange = ccxt.okx({
+
+        exchange_cfg = {
             'apiKey': self.api_key,
             'secret': self.secret_key,
             'password': self.passphrase,
             'enableRateLimit': True,
-        })
+        }
+        self.https_proxy = (
+            os.getenv('OKX_HTTPS_PROXY')
+            or os.getenv('HTTPS_PROXY')
+            or os.getenv('https_proxy')
+        )
+        if self.https_proxy:
+            exchange_cfg['httpsProxy'] = self.https_proxy
+            print(f"【网络】OKX 使用代理: {self.https_proxy}")
+
+        self.exchange = ccxt.okx(exchange_cfg)
         if self.is_demo:
             self.exchange.set_sandbox_mode(True)
         self.verify_environment()
@@ -109,27 +162,18 @@ class OKXTrader:
             
         self.loader = DataLoader()
         self.engineer = FeatureEngineer()
-        self.risk_manager = RiskManager(max_drawdown_limit=0.15, freeze_period_steps=1)
+        self.risk_manager = build_risk_manager_from_config(config)
         
         # Phase 4: Shadow mode
         self.shadow_mode = False
         self.rollout_level = 1.0
-        self.models_dir = MODELS_DIR
-        if HAS_ROLLOUT:
-            try:
-                active_path = get_active_model_path()
-                if not os.path.isabs(active_path):
-                    active_path = os.path.join(BASE_DIR, active_path)
-                if active_path.endswith(".zip"):
-                    active_path = os.path.dirname(active_path)
-                self.models_dir = active_path
-            except Exception as e:
-                print(f"[WARN] Failed to resolve active model path: {e}")
         
-        # 策略参数 (与 Phase B TradingEnv 保持一致)
-        self.TAU = 0.25         # Hysteresis
-        self.DELTA_MAX = 0.15   # Slew Rate
-        self.COOLDOWN_DAYS = 3  # Cooldown
+        # 策略参数 (与 TradingEnv 同源，避免回测/实盘漂移)
+        env_kwargs = _env_kwargs_for_symbol(DATA_SYMBOL, interval=config.data.interval)
+        self.TAU = float(env_kwargs["tau"])
+        self.DELTA_MAX = float(env_kwargs["delta_max"])
+        self.COOLDOWN_DAYS = int(env_kwargs["cooldown_n"])
+        self.target_atr_pct = float(env_kwargs["target_atr_pct"])
         self.atr_floor = config.risk.atr_floor
         self.vol_scale_min = config.risk.vol_scale_min
         self.vol_scale_max = config.risk.vol_scale_max
@@ -139,6 +183,63 @@ class OKXTrader:
         self.log_file = "trade_logs.csv"
         self.init_logger()
         
+        # === MoE 模型预加载 ===
+        self._load_moe_models()
+        
+    def _load_moe_models(self):
+        """预加载 MoE 8 专家 + 门控网络（仅在初始化时执行一次）"""
+        print("【MoE】正在加载 8 专家 + 门控网络...")
+        
+        # 1. 加载专家 artifacts
+        artifacts = build_gate_artifacts(
+            manifest_path=Path(MOE_MANIFEST),
+            stage1_root=MOE_STAGE1_ROOT,
+        )
+        
+        # 2. 需要一个 dummy DataFrame 来构建 expert VecNormalize
+        #    用短数据即可（不影响推理，只用于 env shape）
+        dummy_df = pd.DataFrame({
+            'Open': [1000]*100, 'High': [1010]*100,
+            'Low': [990]*100, 'Close': [1005]*100,
+            'Volume': [1e6]*100, 'Signal_Proba': [0.5]*100,
+        })
+        from features import FeatureEngineer
+        dummy_df = FeatureEngineer().add_technical_indicators(dummy_df)
+        
+        # 3. 加载 expert runtimes
+        self.expert_runtimes = _load_expert_runtimes(
+            artifacts=artifacts,
+            df=dummy_df,
+            config=config,
+            symbol='ETH',
+            interval=config.data.interval,
+        )
+        self.expert_ids = [a.expert_id for a in artifacts]
+        
+        # 4. 加载门控网络
+        gate_model_path = os.path.join(MOE_STAGE2_ROOT, "gate_model.zip")
+        gate_vec_path = os.path.join(MOE_STAGE2_ROOT, "gate_vec_normalize.pkl")
+        
+        if not os.path.exists(gate_model_path):
+            raise FileNotFoundError(f"门控模型不存在: {gate_model_path}")
+        if not os.path.exists(gate_vec_path):
+            raise FileNotFoundError(f"门控归一化不存在: {gate_vec_path}")
+        
+        self.gate_model = PPO.load(gate_model_path)
+        
+        rm_gate = build_risk_manager_from_config(config)
+        env_kwargs = _env_kwargs_for_symbol('ETH', interval=config.data.interval)
+        gate_dummy_env = DummyVecEnv([
+            lambda: TradingEnv(dummy_df, risk_manager=rm_gate, **env_kwargs)
+        ])
+        self.gate_vecnorm = VecNormalize.load(gate_vec_path, gate_dummy_env)
+        self.gate_vecnorm.training = False
+        self.gate_vecnorm.norm_reward = False
+        
+        print(f"【MoE】加载完成: {len(self.expert_runtimes)} 专家 + 门控 (temperature={GATE_TEMPERATURE})")
+        for rt in self.expert_runtimes:
+            print(f"  - {rt.artifact.expert_id} ({rt.artifact.algorithm})")
+
     def verify_environment(self):
         if not self.is_demo:
             confirm_flag = os.getenv('CONFIRM_REAL_MONEY')
@@ -231,12 +332,15 @@ class OKXTrader:
 
     def fetch_market_data(self):
         print(f"【数据】正在获取 {DATA_SYMBOL} 历史数据...")
-        today = pd.Timestamp.now().strftime("%Y-%m-%d")
+        today = (pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
         start = (pd.Timestamp.now() - pd.Timedelta(days=500)).strftime("%Y-%m-%d")
         
-        df = self.loader.fetch_data(start, today, DATA_SYMBOL, interval="1d")
+        df = self.loader.fetch_data(start, today, DATA_SYMBOL, interval="1d", include_funding=True)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        df = drop_incomplete_daily_bar(df)
+        if df is None or df.empty:
+            raise RuntimeError("No completed daily bars available after dropping incomplete current bar.")
             
         processed_df = self.engineer.add_technical_indicators(df)
         
@@ -248,7 +352,7 @@ class OKXTrader:
             raise RuntimeError(
                 f"信号模型不存在: {model_path}\n"
                 f"请先运行训练脚本生成信号模型，或从备份恢复。\n"
-                f"训练命令: python crypto_trader/train_ensemble.py"
+                f"训练命令: python -m crypto_trader.train_moe_stage1"
             )
 
         try:
@@ -408,43 +512,23 @@ class OKXTrader:
         """
         应用 Phase B 的 4-Piece Constraints Logic
         """
-        reason = "Normal"
-        
-        # 1. Hysteresis
-        if abs(target_pos - current_pos) < self.TAU:
-            target_pos = current_pos
-            reason = "Hysteresis"
-            
-        # 2. Slew Rate
-        delta = np.clip(target_pos - current_pos, -self.DELTA_MAX, self.DELTA_MAX)
-        if abs(target_pos - current_pos) > self.DELTA_MAX:
-            reason = "SlewRate"
-            
-        cand_pos = current_pos + delta
-        
-        # 3. Cooldown
         now_ts = datetime.now().timestamp()
-        days_since_flip = (now_ts - last_flip_ts) / (24 * 3600)
-        in_cd = days_since_flip < self.COOLDOWN_DAYS
-        
-        wants_flip = (np.sign(current_pos) != 0 and 
-                      np.sign(cand_pos) != 0 and 
-                      np.sign(cand_pos) != np.sign(current_pos))
-                      
-        exec_pos = cand_pos
-        new_flip_ts = last_flip_ts
-        
-        if in_cd and wants_flip:
-            exec_pos = 0.0
-            reason = "Cooldown"
+        cooldown_seconds = self.COOLDOWN_DAYS * 24 * 3600
+        exec_pos, new_flip_ts, reason = apply_execution_constraints_core(
+            target_pos=target_pos,
+            current_pos=current_pos,
+            last_flip_marker=last_flip_ts,
+            current_marker=now_ts,
+            tau=self.TAU,
+            delta_max=self.DELTA_MAX,
+            cooldown_window=cooldown_seconds,
+        )
+        if reason == "Cooldown":
+            days_since_flip = (now_ts - last_flip_ts) / (24 * 3600)
             print(f"【约束】冷却期生效 ({days_since_flip:.1f}天 < {self.COOLDOWN_DAYS}天)，强制归零。")
-        else:
-            if wants_flip:
-                new_flip_ts = now_ts
-                reason = "Flip"
-                print("【约束】触发反向，更新冷却时间戳。")
-                
-        return float(np.clip(exec_pos, -1.0, 1.0)), new_flip_ts, reason
+        elif reason == "Flip":
+            print("【约束】触发反向，更新冷却时间戳。")
+        return exec_pos, new_flip_ts, reason
 
 
     def force_close_all(self):
@@ -572,8 +656,8 @@ class OKXTrader:
 
     def check_daily_data_ready(self, max_retries=3, retry_interval=30):
         """
-        检查日K线数据是否已更新
-        确认最新K线日期等于当前UTC日期
+        检查上一根完整日K线是否已更新。
+        OKX 日线 timestamp 是 bar-start，今天 00:00 的 K 线是未完成 bar。
         """
         from datetime import datetime, timezone
 
@@ -594,23 +678,20 @@ class OKXTrader:
                         time.sleep(retry_interval)
                     continue
 
-                # 获取最新K线的时间戳
-                latest_candle_ts = ohlcv[-1][0]  # 毫秒时间戳
-                latest_candle_time = datetime.fromtimestamp(
-                    latest_candle_ts / 1000,
-                    tz=timezone.utc
-                )
-
                 now_utc = datetime.now(timezone.utc)
+                expected_completed = latest_completed_daily_start(now_utc).to_pydatetime()
+                candle_times = [
+                    datetime.fromtimestamp(row[0] / 1000, tz=timezone.utc)
+                    for row in ohlcv
+                ]
 
-                # 检查最新K线是否是今天的
-                if latest_candle_time.date() == now_utc.date():
-                    print(f"  ✅ 数据已就绪，最新K线时间: {latest_candle_time.strftime('%Y-%m-%d %H:%M')}")
+                if any(t == expected_completed for t in candle_times):
+                    print(f"  ✅ 数据已就绪，最新完整K线: {expected_completed.strftime('%Y-%m-%d %H:%M')}")
                     return True
                 else:
                     print(f"  [尝试 {attempt+1}/{max_retries}] 数据未就绪，"
-                          f"最新K线: {latest_candle_time.date()}, "
-                          f"当前UTC: {now_utc.date()}")
+                          f"期望完整K线: {expected_completed.strftime('%Y-%m-%d %H:%M')}, "
+                          f"返回K线: {[t.strftime('%Y-%m-%d %H:%M') for t in candle_times]}")
 
                     if attempt < max_retries - 1:
                         print(f"  等待 {retry_interval} 秒后重试...")
@@ -750,59 +831,37 @@ class OKXTrader:
         
         obs = env._get_observation().reshape(1, -1)
         
-        # 4. 集成推理 (与回测完全一致)
-        if HAS_ROLLOUT:
-            try:
-                active_path = get_active_model_path()
-                if not os.path.isabs(active_path):
-                    active_path = os.path.join(BASE_DIR, active_path)
-                if active_path.endswith(".zip"):
-                    active_path = os.path.dirname(active_path)
-                self.models_dir = active_path
-            except Exception as e:
-                print(f"[WARN] Failed to refresh active model path: {e}")
+        # 4. MoE 推理 (与 backtest_moe.py 完全一致)
+        # 4a. 门控网络 → softmax 权重
+        gate_obs = self.gate_vecnorm.normalize_obs(obs)
+        logits, _ = self.gate_model.predict(gate_obs, deterministic=True)
+        logits = np.asarray(logits, dtype=np.float32).reshape(-1)
+        weights = softmax_weights(logits, temperature=GATE_TEMPERATURE)
 
-        actions = []
-        for seed in SEEDS:
-            model_path = f"{self.models_dir}/ppo_seed_{seed}.zip"
-            vec_path = f"{self.models_dir}/vec_norm_seed_{seed}.pkl"
-            if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Model file missing: {model_path}")
-            if not os.path.exists(vec_path):
-                raise FileNotFoundError(f"Normalization file missing: {vec_path}")
-            
-            model = PPO.load(model_path)
-            
-            # Load norm stats
-            dummy_vec = DummyVecEnv([
-                lambda: TradingEnv(
-                    df[:100],
-                    risk_manager=self.risk_manager,
-                    atr_floor=self.atr_floor,
-                    vol_scale_min=self.vol_scale_min,
-                    vol_scale_max=self.vol_scale_max
-                )
-            ])
-            vec_norm = VecNormalize.load(vec_path, dummy_vec)
-            vec_norm.training = False
-            vec_norm.norm_reward = False
-            
-            norm_obs = vec_norm.normalize_obs(obs[0])
-            action, _ = model.predict(norm_obs, deterministic=True)
-            actions.append(action[0] if len(action.shape)==1 else action[0][0])
-            
-        if not actions:
-            print("【错误】未加载到任何模型，跳过本次执行")
-            return
+        # 4b. 各专家推理（带特征掩码）
+        raw_obs = np.asarray(obs, dtype=np.float32).reshape(1, -1)[0]
+        expert_actions = []
+        for runtime in self.expert_runtimes:
+            masked = _mask_obs(raw_obs, runtime.artifact.feature_mask)
+            norm_obs = runtime.vecnorm.normalize_obs(masked.reshape(1, -1))
+            action, _ = runtime.model.predict(norm_obs, deterministic=True)
+            expert_actions.append(float(np.asarray(action).reshape(-1)[0]))
+
+        expert_actions_arr = np.asarray(expert_actions, dtype=np.float32)
+
+        # 4c. 门控加权合成
+        raw_action = float(np.clip(np.dot(weights, expert_actions_arr), -1.0, 1.0))
+
+        # 打印各专家信号和门控权重
+        for eid, w, a in zip(self.expert_ids, weights, expert_actions):
+            print(f"  {eid}: weight={w:.3f}  action={a:+.4f}")
 
         # 5. 决策逻辑 (与回测一致：波动率缩放 -> 风控 -> 约束)
-        raw_action = float(np.mean(actions))
-        raw_action = float(np.clip(raw_action, -1.0, 1.0))
 
         current_atr_pct = (current_atr / current_price) if current_price > 0 and current_atr > 0 else 0.02
         if current_atr_pct < self.atr_floor:
             current_atr_pct = self.atr_floor
-        vol_scale = float(np.clip(0.05 / current_atr_pct, self.vol_scale_min, self.vol_scale_max))
+        vol_scale = float(np.clip(self.target_atr_pct / current_atr_pct, self.vol_scale_min, self.vol_scale_max))
 
         target_intent = raw_action * vol_scale
 
@@ -841,12 +900,18 @@ class OKXTrader:
             alerts.send("WARN", f"⚠️ 触发风控限制: {constraint_reason}")
 
         print(
-            f"【模型】{len(actions)}模型输出均值: {raw_action:.4f} | 波动缩放: {vol_scale:.2f} "
+            f"【MoE】{len(self.expert_runtimes)}专家门控合成: {raw_action:.4f} | 波动缩放: {vol_scale:.2f} "
             f"-> 目标仓位: {target_intent:.4f} | 执行仓位: {exec_pos:.4f}"
         )
         
         # Phase 4: Shadow mode indicator
         is_shadow = self.shadow_mode
+        
+        # [MODIFIED] Explicitly log decision for transparency
+        if abs(exec_pos - real_pos) < 0.001:
+            print(f"【决策】持仓保持不变 (原因: {constraint_reason})")
+        else:
+            print(f"【决策】触发调仓 (原因: {constraint_reason})")
         
         # === Phase 1: Execution Safety ===
         action_id = None
@@ -927,6 +992,22 @@ class OKXTrader:
                     'safe_reason': safe_reason, 'reconcile_diff': reconcile_diff
                 }
                 self.log_trade(log_data)
+                self.write_status(
+                    "blocked_by_safe_mode",
+                    equity=equity,
+                    real_pos=real_pos,
+                    last_action=real_pos,
+                    last_error=reason,
+                )
+                self.mark_execution("blocked", {
+                    "equity": equity,
+                    "position": real_pos,
+                    "target_position": exec_pos,
+                    "action": "Blocked",
+                    "reason": reason,
+                    "reconcile_diff": reconcile_diff,
+                    "data_ready": data_ready,
+                })
                 return
             
             # Register action before execution
@@ -1031,20 +1112,23 @@ class OKXTrader:
         target_value = equity * target_leverage
         
         contract_size = self._get_contract_size()
-        target_contracts = int(target_value / (price * contract_size))
+        # [MODIFIED] Check min size and use precision (no int truncation)
+        raw_target = target_value / (price * contract_size)
+        target_contracts = float(self.exchange.amount_to_precision('ETH/USDT:USDT', raw_target))
         
         # 获取当前合约数
         _, _ = self.get_real_position() 
         positions = self.exchange.fetch_positions(['ETH/USDT:USDT'])
-        current_contracts = 0
+        current_contracts = 0.0
         current_notional = 0.0
         if positions:
             qty = float(positions[0]['contracts'])
             if positions[0]['side'] == 'short': qty = -qty
-            current_contracts = int(qty)
+            current_contracts = qty
             current_notional = abs(current_contracts) * contract_size * price
             
         diff = target_contracts - current_contracts
+        diff = float(self.exchange.amount_to_precision('ETH/USDT:USDT', diff))
         intent = "risk_off" if abs(target_contracts) <= abs(current_contracts) else "risk_on"
         
         # ===== 详细下单日志 =====
@@ -1064,7 +1148,7 @@ class OKXTrader:
         position_direction = "多头" if current_contracts > 0 else ("空头" if current_contracts < 0 else "空仓")
         
         print(f"\n📍 当前仓位:")
-        print(f"   • 持仓张数: {current_contracts} 张 ({position_direction})")
+        print(f"   • 持仓张数: {current_contracts:.2f} 张 ({position_direction})")
         print(f"   • 名义价值: ${current_notional:,.2f}")
         print(f"   • 资金占比: {current_pos_pct:.2f}% (相当于 {current_leverage:.2f}x 杠杆)")
         
@@ -1075,7 +1159,7 @@ class OKXTrader:
         target_direction = "多头" if target_contracts > 0 else ("空头" if target_contracts < 0 else "空仓")
         
         print(f"\n🎯 目标仓位:")
-        print(f"   • 目标张数: {target_contracts} 张 ({target_direction})")
+        print(f"   • 目标张数: {target_contracts:.2f} 张 ({target_direction})")
         print(f"   • 名义价值: ${target_notional:,.2f}")
         print(f"   • 资金占比: {target_pos_pct:.2f}% (相当于 {target_leverage_calc:.2f}x 杠杆)")
         print(f"   • 目标杠杆倍数: {abs(target_leverage):.4f}x")
@@ -1093,7 +1177,7 @@ class OKXTrader:
             
         print(f"\n📝 本次操作:")
         print(f"   • 操作类型: {action_type}")
-        print(f"   • 变动张数: {diff:+d} 张 ({'买入' if diff > 0 else '卖出'})")
+        print(f"   • 变动张数: {diff:+.2f} 张 ({'买入' if diff > 0 else '卖出'})")
         print(f"   • 订单金额: ${order_notional:,.2f}")
         print(f"   • 占总资金: {order_pct:.2f}%")
         
@@ -1106,7 +1190,7 @@ class OKXTrader:
         print(f"   • 杠杆倍数变化: {current_leverage:.2f}x → {target_leverage_calc:.2f}x ({leverage_change:+.2f}x)")
         print("="*60 + "\n")
         
-        print(f"【执行】当前持仓: {current_contracts} 张 | 目标: {target_contracts} 张 | 需变动: {diff} 张")
+        print(f"【执行】当前持仓: {current_contracts:.2f} 张 | 目标: {target_contracts:.2f} 张 | 需变动: {diff:.2f} 张")
         
         if diff == 0:
             print("【执行】无需操作")

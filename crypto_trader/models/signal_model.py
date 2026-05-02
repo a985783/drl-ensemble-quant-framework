@@ -112,6 +112,11 @@ class SignalPredictor:
             np.ndarray: Array of probabilities for class 1 (Up).
         """
         X = self._prepare_features_and_labels(data, training=False)
+        expected_cols = list(getattr(self.scaler, "feature_names_in_", []))
+        if expected_cols:
+            # Runtime data may contain extra columns from newer feature pipelines.
+            # Align strictly to training-time feature schema to keep live inference stable.
+            X = X.reindex(columns=expected_cols, fill_value=0.0)
         X_scaled = self.scaler.transform(X)
         
         # predict_proba returns [prob_0, prob_1]
@@ -133,4 +138,3 @@ class SignalPredictor:
         instance.scaler = data['scaler']
         print(f"Signal Model loaded from {path}")
         return instance
-

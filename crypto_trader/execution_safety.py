@@ -523,6 +523,15 @@ def reconcile(
             f"Reconciliation failed: {'; '.join(discrepancies)}",
             state
         )
+    elif (
+        state.safety_state == SafetyState.SAFE_MODE.value
+        and isinstance(state.safe_mode_reason, str)
+        and state.safe_mode_reason.startswith("Reconciliation failed:")
+        and not open_orders
+    ):
+        # Auto-recover only from stale reconcile-based SAFE_MODE once
+        # exchange/local state is healthy again and there are no live orders.
+        state = exit_safe_mode(state)
     
     save_state(state)
     

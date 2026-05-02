@@ -17,9 +17,9 @@ sys.path.insert(0, BASE_DIR)
 
 from crypto_trader.alerting import AlertManager
 
-# Configuration
-CHECK_HOUR = 8
-CHECK_MINUTE = 30
+# Configuration (system local schedule should align with setup_cron.sh defaults)
+CHECK_HOUR = int(os.getenv("DAILY_CHECK_HOUR", "8"))
+CHECK_MINUTE = int(os.getenv("DAILY_CHECK_MINUTE", "35"))
 
 def get_cn_now():
     """Get current China time (UTC+8)"""
@@ -46,6 +46,10 @@ def check_daily_execution():
 
         if status == "success":
             return True, f"今日已于 {executed_at} 成功执行"
+        elif status == "blocked":
+            details = data.get("details", {})
+            reason = details.get("reason", "未知原因")
+            return False, f"今日已执行，但被 SAFE_MODE 阻止: {reason}"
         elif status == "failed":
             retry_count = data.get("retry_count", 0)
             return False, f"今日执行失败，已重试 {retry_count} 次"

@@ -1,0 +1,30 @@
+{
+  "manifest_path": "crypto_trader/configs/moe_experts.yaml",
+  "stage1_root": "checkpoints/moe/candidate_e4e7/stage3_20260302_194914_r1/round1/experts",
+  "load_balance_coef": 0.02,
+  "diversity_coef": 0.01,
+  "gate_temperature": 1.6,
+  "total_timesteps": 80000,
+  "usage_ema": [
+    0.10261301696300507,
+    0.13227368891239166,
+    0.12611524760723114,
+    0.12616218626499176,
+    0.14469382166862488,
+    0.12918218970298767,
+    0.1145525723695755,
+    0.1244082823395729
+  ],
+  "expert_ids": [
+    "E1_PPO_trend_return",
+    "E2_PPO_bear_drawdown",
+    "E3_PPO_range_calmar",
+    "E4_PPO_highvol_risk",
+    "E5_PPO_lowvol_carry",
+    "E6_SAC_tail_hedge",
+    "E7_SAC_fast_adapt",
+    "E8_A2C_regime_switch"
+  ],
+  "symbol": "ETH/USDT:USDT",
+  "interval": "1d"
+}
