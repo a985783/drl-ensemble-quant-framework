@@ -98,7 +98,7 @@ class WalkForwardMoEConfig:
         FoldSpec("fold_5", "2020-01-01", "2025-12-31", "2026-01-01", "2026-12-31"),
     ])
 
-    # --- 4 experts (subset of the full 8) ---
+    # --- Stable 4-expert production set ---
     expert_ids: List[str] = field(default_factory=lambda: [
         "E2_PPO_bear_drawdown",
         "E4_PPO_highvol_risk",
