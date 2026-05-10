@@ -5,6 +5,7 @@ import os
 import sys
 import argparse
 from dotenv import load_dotenv
+from crypto_trader.ccxt_utils import apply_ccxt_proxy_config
 
 def check_balance():
     parser = argparse.ArgumentParser(description='Check OKX account balance.')
@@ -32,11 +33,11 @@ def check_balance():
         return
 
     try:
-        exchange = ccxt.okx({
+        exchange = ccxt.okx(apply_ccxt_proxy_config({
             'apiKey': api_key,
             'secret': secret_key,
             'password': passphrase,
-        })
+        }))
         
         if is_demo:
             exchange.set_sandbox_mode(True)

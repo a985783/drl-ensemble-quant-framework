@@ -1,6 +1,7 @@
 {
-  "stable_run_id": "moe_run5_v3_t16_r2",
+  "stable_run_id": "moe_4exp_walkforward_fold5_2026",
   "stable_model_path": "checkpoints/moe/stable",
+  "stable_gate_temperature": 0.5,
   "candidate_run_id": null,
   "candidate_model_path": null,
   "rollout_level": 1.0,

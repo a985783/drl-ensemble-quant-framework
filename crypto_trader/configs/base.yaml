@@ -51,6 +51,8 @@ risk:
   tier2_limit: 0.5
   survival_drawdown: 0.15
   survival_limit: 0.2
+  hard_stop_drawdown: 0.20
+  max_position_usd: 50000.0
   atr_floor: 0.005
   vol_scale_min: 0.1
   vol_scale_max: 2.0

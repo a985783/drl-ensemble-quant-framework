@@ -1,16 +1,4 @@
 experts:
-  - expert_id: E1_PPO_trend_return
-    algorithm: ppo
-    seed: 42
-    data_slice: bull
-    feature_mask: trend
-    timesteps: 150000
-    reward_profile:
-      return: 1.20
-      sortino: 0.80
-      drawdown: 0.80
-      turnover: 0.02
-
   - expert_id: E2_PPO_bear_drawdown
     algorithm: ppo
     seed: 123
@@ -22,18 +10,6 @@ experts:
       sortino: 1.20
       drawdown: 1.60
       turnover: 0.05
-
-  - expert_id: E3_PPO_range_calmar
-    algorithm: ppo
-    seed: 456
-    data_slice: range
-    feature_mask: carry
-    timesteps: 150000
-    reward_profile:
-      return: 0.95
-      sortino: 1.30
-      drawdown: 1.40
-      turnover: 0.04
 
   - expert_id: E4_PPO_highvol_risk
     algorithm: ppo
@@ -59,18 +35,6 @@ experts:
       drawdown: 1.00
       turnover: 0.01
 
-  - expert_id: E6_SAC_tail_hedge
-    algorithm: sac
-    seed: 2024
-    data_slice: high_vol
-    feature_mask: risk
-    timesteps: 180000
-    reward_profile:
-      return: 0.80
-      sortino: 1.20
-      drawdown: 1.80
-      turnover: 0.05
-
   - expert_id: E7_SAC_fast_adapt
     algorithm: sac
     seed: 2025
@@ -80,17 +44,5 @@ experts:
     reward_profile:
       return: 1.00
       sortino: 0.90
-      drawdown: 1.10
-      turnover: 0.03
-
-  - expert_id: E8_A2C_regime_switch
-    algorithm: a2c
-    seed: 3000
-    data_slice: full
-    feature_mask: switch
-    timesteps: 120000
-    reward_profile:
-      return: 1.00
-      sortino: 1.00
       drawdown: 1.10
       turnover: 0.03

@@ -9,8 +9,10 @@ import os
 from dotenv import load_dotenv
 try:
     from crypto_trader.data_validator import DataValidator
+    from crypto_trader.ccxt_utils import apply_ccxt_proxy_config, resolve_ccxt_proxies
 except ImportError:
     from data_validator import DataValidator
+    from ccxt_utils import apply_ccxt_proxy_config, resolve_ccxt_proxies
 
 class DataLoader:
     """
@@ -24,14 +26,10 @@ class DataLoader:
         exchange_cfg = {
             'enableRateLimit': True,
         }
-        https_proxy = (
-            os.getenv('OKX_HTTPS_PROXY')
-            or os.getenv('HTTPS_PROXY')
-            or os.getenv('https_proxy')
-        )
-        if https_proxy:
-            exchange_cfg['httpsProxy'] = https_proxy
-            print(f"【网络】DataLoader 使用代理: {https_proxy}")
+        exchange_cfg = apply_ccxt_proxy_config(exchange_cfg)
+        proxies = resolve_ccxt_proxies()
+        if proxies:
+            print(f"【网络】DataLoader 使用代理: {proxies}")
 
         self.exchange = ccxt.okx(exchange_cfg)
         # 注意：获取历史K线不需要API Key，公开数据

@@ -11,11 +11,11 @@ def test_algo_registry_supports_expected_algorithms() -> None:
     assert set(["ppo", "a2c", "sac"]).issubset(set(registry.keys()))
 
 
-def test_dry_specs_resolve_eight_experts() -> None:
+def test_dry_specs_resolve_four_experts() -> None:
     manifest_path = Path(__file__).resolve().parents[1] / "configs" / "moe_experts.yaml"
     specs = build_training_specs(manifest_path)
 
-    assert len(specs) == 8
+    assert len(specs) == 4
     assert all(spec.expert_id for spec in specs)
     assert all(spec.algorithm in {"ppo", "a2c", "sac"} for spec in specs)
 

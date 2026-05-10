@@ -2,14 +2,15 @@
 import ccxt
 import os
 from dotenv import load_dotenv
+from crypto_trader.ccxt_utils import apply_ccxt_proxy_config
 
 load_dotenv()
 
-exchange = ccxt.okx({
+exchange = ccxt.okx(apply_ccxt_proxy_config({
     'apiKey': os.getenv('OKX_API_KEY'),
     'secret': os.getenv('OKX_SECRET_KEY'),
     'password': os.getenv('OKX_PASSPHRASE'),
-})
+}))
 if os.getenv('OKX_DEMO_MODE') == 'True':
     exchange.set_sandbox_mode(True)
 

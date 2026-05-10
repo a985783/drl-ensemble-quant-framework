@@ -18,6 +18,7 @@ from features import FeatureEngineer
 from envs.trading_env import TradingEnv, apply_execution_constraints_core
 from risk_manager import build_risk_manager_from_config
 from models.signal_model import SignalPredictor
+from ccxt_utils import apply_ccxt_proxy_config, resolve_ccxt_proxies
 
 # MoE Inference
 from backtest_moe import (
@@ -79,11 +80,11 @@ config = get_default_config()
 
 DATA_SYMBOL = config.data.symbol
 
-# === MoE 配置 (8 专家 + 门控网络) ===
+# === MoE 配置 (4 专家 + 门控网络) ===
 MOE_MANIFEST = os.path.join(SCRIPT_DIR, "configs/moe_experts.yaml")
 MOE_STAGE1_ROOT = os.path.join(BASE_DIR, "checkpoints/moe/stable/experts")
 MOE_STAGE2_ROOT = os.path.join(BASE_DIR, "checkpoints/moe/stable/gate")
-GATE_TEMPERATURE = 0.68
+GATE_TEMPERATURE = 0.5
 STATE_FILE = os.path.join(BASE_DIR, "trading_state.json")  # 记录策略状态 (last_flip_time 等)
 INITIAL_CAPITAL_FILE = os.path.join(BASE_DIR, "initial_capital.json")
 
@@ -134,14 +135,11 @@ class OKXTrader:
             'password': self.passphrase,
             'enableRateLimit': True,
         }
-        self.https_proxy = (
-            os.getenv('OKX_HTTPS_PROXY')
-            or os.getenv('HTTPS_PROXY')
-            or os.getenv('https_proxy')
-        )
-        if self.https_proxy:
-            exchange_cfg['httpsProxy'] = self.https_proxy
-            print(f"【网络】OKX 使用代理: {self.https_proxy}")
+        exchange_cfg = apply_ccxt_proxy_config(exchange_cfg)
+        proxies = resolve_ccxt_proxies()
+        self.https_proxy = proxies.get("https")
+        if proxies:
+            print(f"【网络】OKX 使用代理: {proxies}")
 
         self.exchange = ccxt.okx(exchange_cfg)
         if self.is_demo:
@@ -178,6 +176,8 @@ class OKXTrader:
         self.vol_scale_min = config.risk.vol_scale_min
         self.vol_scale_max = config.risk.vol_scale_max
         self.max_slippage_risk_on = config.risk.max_slippage_risk_on
+        self.hard_stop_drawdown = config.risk.hard_stop_drawdown
+        self.max_position_usd = config.risk.max_position_usd
         self.expected_contract_size = 0.1
         self.contract_size_tolerance = 1e-6
         self.log_file = "trade_logs.csv"
@@ -187,8 +187,8 @@ class OKXTrader:
         self._load_moe_models()
         
     def _load_moe_models(self):
-        """预加载 MoE 8 专家 + 门控网络（仅在初始化时执行一次）"""
-        print("【MoE】正在加载 8 专家 + 门控网络...")
+        """预加载 MoE 4 专家 + 门控网络（仅在初始化时执行一次）"""
+        print("【MoE】正在加载 4 专家 + 门控网络...")
         
         # 1. 加载专家 artifacts
         artifacts = build_gate_artifacts(
@@ -619,6 +619,17 @@ class OKXTrader:
             
         # Drawdown for Risk Manager
         current_drawdown = (max_equity - equity) / max_equity if max_equity > 0 else 0.0
+
+        if self.hard_stop_drawdown and current_drawdown >= self.hard_stop_drawdown:
+            msg = (
+                f"🚨 【硬停止】当前回撤: {current_drawdown*100:.2f}% | "
+                f"已达到 {self.hard_stop_drawdown*100:.2f}% 硬停止阈值，终止本次实盘执行"
+            )
+            print(msg)
+            alerts.send("ERROR", msg)
+            self.write_status("hard_stop", equity=equity, real_pos=real_pos, drawdown=current_drawdown, last_error=msg)
+            self.save_state(state)
+            raise SystemExit(1)
 
         # === 资金异常监控 ===
         last_equity = state.get('last_equity', equity)
@@ -1110,6 +1121,17 @@ class OKXTrader:
     def execute_order(self, target_leverage, price, equity, action_id=None):
         # 计算目标合约数量
         target_value = equity * target_leverage
+        if self.max_position_usd and self.max_position_usd > 0:
+            capped_target_value = float(np.clip(target_value, -self.max_position_usd, self.max_position_usd))
+            if capped_target_value != target_value:
+                msg = (
+                    f"【风险保护】目标名义仓位超过上限，已裁剪: "
+                    f"${abs(target_value):,.2f} -> ${abs(capped_target_value):,.2f}"
+                )
+                print(msg)
+                alerts.send("WARN", msg)
+                target_value = capped_target_value
+                target_leverage = target_value / equity if equity > 0 else 0.0
         
         contract_size = self._get_contract_size()
         # [MODIFIED] Check min size and use precision (no int truncation)

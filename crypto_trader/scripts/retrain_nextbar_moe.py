@@ -51,7 +51,7 @@ warnings.filterwarnings("ignore")
 # ──────────────────────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
-CANDIDATE_MANIFEST_PATH = _PROJECT_ROOT / "configs" / "moe_experts_candidate.yaml"
+CANDIDATE_MANIFEST_PATH = _PROJECT_ROOT / "configs" / "moe_experts.yaml"
 TRAIN_CSV = _PROJECT_ROOT / "data_moe_20200101_20260216_train80.csv"
 OOS_CSV = _PROJECT_ROOT / "data_moe_20200101_20260216_oos20.csv"
 

@@ -194,16 +194,7 @@ def _training_controls_for_expert(spec: TrainingSpec) -> Dict[str, float]:
     }
 
     eid = spec.expert_id
-    if eid == "E3_PPO_range_calmar":
-        controls.update(
-            {
-                "action_cap": 0.50,
-                "sat_penalty_coef": 0.14,
-                "directional_bias_coef": 0.06,
-                "regime_off_reward_weight": 0.08,
-            }
-        )
-    elif eid == "E5_PPO_lowvol_carry":
+    if eid == "E5_PPO_lowvol_carry":
         controls.update(
             {
                 "action_cap": 0.35,

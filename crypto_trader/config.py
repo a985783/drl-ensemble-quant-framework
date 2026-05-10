@@ -58,6 +58,9 @@ class RiskConfig:
     # Survival mode thresholds
     survival_drawdown: float = 0.15
     survival_limit: float = 0.2
+    # Hard live-trading safety stops
+    hard_stop_drawdown: float = 0.20
+    max_position_usd: float = 50000.0
     # Volatility scaling guards
     atr_floor: float = 0.005
     vol_scale_min: float = 0.1

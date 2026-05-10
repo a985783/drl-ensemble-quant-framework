@@ -22,11 +22,11 @@ def test_softmax_weights_properties() -> None:
     assert np.all(weights > 0)
 
 
-def test_gate_artifact_builder_resolves_eight_experts() -> None:
+def test_gate_artifact_builder_resolves_four_experts() -> None:
     manifest_path = Path(__file__).resolve().parents[1] / "configs" / "moe_experts.yaml"
     artifacts = build_gate_artifacts(manifest_path, stage1_root="checkpoints/moe/stage1")
 
-    assert len(artifacts) == 8
+    assert len(artifacts) == 4
     assert all(a.model_path.name == "model.zip" for a in artifacts)
     assert all(a.vecnorm_path.name == "vec_normalize.pkl" for a in artifacts)
 
