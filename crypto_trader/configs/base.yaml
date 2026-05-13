@@ -1,0 +1,66 @@
+# Base Configuration for Crypto Trader
+# This is the default configuration for reproducible runs
+
+seed:
+  global_seed: 42
+  ensemble_seeds:
+    - 42
+    - 123
+    - 456
+    - 789
+    - 1024
+    - 2024
+    - 2025
+    - 3000
+    - 4000
+    - 5000
+    - 6000
+    - 7000
+    - 8000
+    - 9000
+    - 10000
+    - 1111
+    - 2222
+    - 3333
+    - 4444
+    - 5555
+
+data:
+  symbol: "ETH/USDT:USDT"
+  interval: "1d"
+  train_start: "2020-01-01"
+  train_end: "2025-12-15"
+  train_split_ratio: 0.8
+
+model:
+  learning_rate: 0.0003
+  gamma: 0.995
+  n_steps: 2048
+  batch_size: 256
+  ent_coef: 0.005
+  clip_range: 0.2
+  gae_lambda: 0.95
+  total_timesteps: 150000
+
+risk:
+  max_drawdown_limit: 0.15
+  freeze_period_steps: 1
+  tier1_drawdown: 0.05
+  tier1_limit: 0.8
+  tier2_drawdown: 0.10
+  tier2_limit: 0.5
+  survival_drawdown: 0.15
+  survival_limit: 0.2
+  hard_stop_drawdown: 0.20
+  max_position_usd: 50000.0
+  atr_floor: 0.005
+  vol_scale_min: 0.1
+  vol_scale_max: 2.0
+  max_slippage_risk_on: 0.03
+
+paths:
+  checkpoints_dir: "checkpoints/moe/stable"
+  results_dir: "results"
+  runs_dir: "runs"
+
+mode: "backtest"

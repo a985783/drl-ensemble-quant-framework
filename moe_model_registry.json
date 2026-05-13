@@ -1,0 +1,15 @@
+{
+  "stable_run_id": "moe_4exp_walkforward_fold5_2026",
+  "stable_model_path": "checkpoints/moe/stable",
+  "stable_gate_temperature": 0.5,
+  "candidate_run_id": null,
+  "candidate_model_path": null,
+  "rollout_level": 1.0,
+  "rollout_level_index": -1,
+  "rollout_started_at": null,
+  "rollout_trades_count": 8,
+  "total_trades": 8,
+  "filled_trades": 8,
+  "total_slippage": 0.0,
+  "reconcile_errors": 1
+}
