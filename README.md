@@ -54,10 +54,9 @@ flowchart TD
 
 ## Walk-Forward 状态
 
-当前 4 专家版本的 Walk-Forward 报告位于：
+当前 4 专家版本的 Walk-Forward 摘要位于：
 
-- `crypto_trader/walk_forward/results/walk_forward_moe/summary/final_report.md`
-- `crypto_trader/walk_forward/results/walk_forward_moe/summary/verdict.json`
+- `docs/WALK_FORWARD_SUMMARY.md`
 
 当前总判定为 `FAIL`：
 
@@ -67,6 +66,10 @@ flowchart TD
 - 最新 fold_5 表现较好，但 2023 和 2024 阶段跑输 ETH Buy & Hold
 
 因此这个版本可以作为 4 专家主线继续迭代，但不能把 Walk-Forward 结论表述为整体通过。
+
+## GitHub 公开版边界
+
+本仓库按公开上传版本整理：源码、稳定配置、小体积稳定模型、测试和研究文档保留；本地密钥、交易状态、日志、运行结果、重复 walk-forward checkpoint、内部过程稿和生成数据快照不进入 Git 历史。详细边界见 `docs/GITHUB_RELEASE.md`。
 
 ## 快速开始
 
@@ -80,7 +83,11 @@ pip install -r requirements.txt
 
 ```bash
 PYTHONPATH=. python crypto_trader/scripts/build_moe_dataset.py \
-  --output crypto_trader/data_moe_20200101_20260216_full.csv
+  --symbol ETH/USDT:USDT \
+  --start 2020-01-01 \
+  --end 2026-02-16 \
+  --interval 1d \
+  --output-prefix crypto_trader/data_moe_20200101_20260216
 ```
 
 训练专家：
@@ -128,6 +135,8 @@ python3 -m pytest crypto_trader/tests -q
 ## 实盘边界
 
 实盘入口仍然通过 `live_trading_okx.py` 和调度脚本运行。真实下单需要 `.env.live`、OKX API 配置和 `CONFIRM_REAL_MONEY=True`。当前系统是 CRON/launchd 调度的一次性日频执行模型，不是常驻 daemon。
+
+公开仓库不要提交 `.env`、`.env.live` 或真实 webhook。复制 `.env.example` 到本地环境文件后再填写凭据。
 
 ## 当前主线原则
 

@@ -29,7 +29,9 @@
 PYTHONPATH=. python -m crypto_trader.walk_forward.moe_walk_forward
 ```
 
-回测单折已训练结果时，优先使用项目根目录的 MoE 回测入口：
+回测单折已训练结果时，优先使用项目根目录的 MoE 回测入口。公开仓库默认不提交
+`checkpoints/` 和 `results/` 下的 fold 级运行产物，需要先运行上面的 walk-forward
+命令重新生成：
 
 ```bash
 PYTHONPATH=. python -m crypto_trader.backtest_moe \
@@ -48,8 +50,8 @@ crypto_trader/walk_forward/
 ├── moe_walk_forward.py                   # MoE Walk-Forward 编排器
 ├── expert_trainer.py                     # 专家折叠训练
 ├── gate_trainer.py                       # Gate 折叠训练
-├── checkpoints/walk_forward_moe/         # 各折专家与 Gate 模型
-└── results/walk_forward_moe/             # 各折数据、报告与图表
+├── checkpoints/                          # 本地生成；不进入 Git
+└── results/                              # 本地生成；摘要见 docs/WALK_FORWARD_SUMMARY.md
 ```
 
 旧的单 PPO walk-forward 文件仍保留为兼容/历史基线，不再作为项目主入口。
